@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1024" />
+  <title>Rear Light Bar • PC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root{--bg:#111;--ui:#222;--text:#e8e8e8;--seg-off:#2a0000;--seg-off-br:#4d0000;--red:#ff0000;--amber:#ff9900;--green:#00c66a;--glow-red:0 0 6px #ff0000,0 0 16px #ff0000,0 0 28px #ff0000;--glow-amber:0 0 6px #ff9900,0 0 16px #ff9900,0 0 28px #ff9900;--glow-red-dim:0 0 4px rgba(255,0,0,.45);--glow-amber-dim:0 0 4px rgba(255,153,0,.55);--gap:4px;--seg:12px;--radius:5px;--w:1120px}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial;display:flex;align-items:center;justify-content:center}
+    .wrap{width:min(var(--w),96vw);padding:20px 16px;text-align:center}
+    .bar-shell{display:flex;justify-content:center;margin:28px auto 18px}
+    .bar{display:flex;gap:var(--gap)}
+    .seg{width:var(--seg);height:calc(var(--seg)*2);background:var(--seg-off);border:1px solid var(--seg-off-br);border-radius:var(--radius);transition:background-color .18s ease,box-shadow .18s ease,border-color .18s ease,opacity .18s ease}
+    
+    /* Standard Red Running Light */
+    .on{background:var(--red);border-color:#ff4747;box-shadow:var(--glow-red)}
+    .dim{background:rgba(255,0,0,.32);border-color:#970000;box-shadow:var(--glow-red-dim)}
+    
+    /* Amber Signal */
+    .ind{background:var(--amber);border-color:#ffc066;box-shadow:var(--glow-amber)}
+    .ind-dim{background:rgba(255,153,0,.42);border-color:#cc7a00;box-shadow:var(--glow-amber-dim)}
+
+    /* USDM Red Signal */
+    .usdm{background:var(--red);border-color:#ff4747;box-shadow:var(--glow-red)}
+
+    .dash{display:flex;gap:26px;align-items:center;justify-content:center;height:34px;margin:8px 0 20px}
+    .ico{width:30px;height:30px;opacity:0;transition:opacity .12s ease;color:var(--green);position:relative;background:none;box-shadow:none}
+    .ico svg{width:100%;height:100%;display:block}
+    .ico.on{opacity:1}
+    .ico.dim{opacity:.45}
+    .ico.hazard{color:var(--red)}
+    .tri{width:0;height:0;border-left:15px solid transparent;border-right:15px solid transparent;border-bottom:26px solid currentColor;position:absolute;inset:0;margin:auto;top:-2px}
+    .panel{background:var(--ui);padding:16px 18px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.35);width:720px;margin:0 auto;text-align:left}
+    .panel h2{margin:0 0 10px;font-weight:800;font-size:18px}
+    .keys{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px}
+    .key{display:flex;align-items:center;gap:10px;font-size:14px;color:#cfcfcf}
+    kbd{background:#3f3f3f;border:1px solid #666;border-bottom-color:#444;padding:6px 10px;border-radius:7px;font-weight:600;min-width:22px;text-align:center;box-shadow:0 2px 0 #222}
+    .mode{margin-top:12px;padding-top:12px;border-top:1px solid #3a3a3a;font-size:14px}
+    .mode b{color:var(--amber)}
+    .tests{display:none;margin-top:12px;padding-top:12px;border-top:1px solid #3a3a3a;font-size:13px;color:#cfcfcf}
+    .tests ul{margin:8px 0 0;padding-left:18px}
+    .ok{color:#78e08f}
+    .fail{color:#ff6b6b}
+  </style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="bar-shell"><div class="bar" id="bar"></div></div>
+  <div class="dash">
+    <div id="ico-left" class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 19l-7-7 7-7v14z"/></svg></div>
+    <div id="ico-haz" class="ico hazard" aria-hidden="true"><div class="tri"></div></div>
+    <div id="ico-right" class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 5l7 7-7 7V5z"/></svg></div>
+  </div>
+  <div class="panel" id="panel">
+    <h2>Controls</h2>
+    <div class="keys">
+      <div class="key"><kbd>F</kbd> Lock / Unlock</div>
+      <div class="key"><kbd>Z</kbd> Left signal</div>
+      <div class="key"><kbd>X</kbd> Hazard</div>
+      <div class="key"><kbd>C</kbd> Right signal</div>
+      <div class="key"><kbd>M</kbd> Change mode</div>
+      <div class="key"><kbd>H</kbd> Toggle UI</div>
+    </div>
+    <div class="mode">Mode: <b id="modeName">Audi</b></div>
+    <div class="tests" id="tests"><strong>Self-tests</strong><div id="testSummary"></div><ul id="testList"></ul></div>
+  </div>
+</div>
+<script>
+(() => {
+  const CFG={
+    COUNT:60,RAF_MS:16,SEQ_PAUSE:100,
+    WELCOME_DELAY:200,GOODBYE_DELAY:200,RETURN_TO_RED_DELAY:200,
+    AUDI_HOLD_ON:200,AUDI_FADE:80,AUDI_HOLD_OFF:250,
+    BMW_FADE_IN:450,BMW_HOLD_OFF:225,
+    MAZDA_HOLD_ON:150,MAZDA_FADE:300,MAZDA_HOLD_OFF:350,
+    HAZ_ON:150,HAZ_OFF:150,
+    BLINK_ON:350, BLINK_OFF:350 // Timing for Normal/USDM/Halogen
+  };
+  const $=(q,el=document)=>el.querySelector(q);
+  const bar=$('#bar'),modeName=$('#modeName'),panel=$('#panel');
+  const icoL=$('#ico-left'),icoR=$('#ico-right'),icoH=$('#ico-haz');
+  const testsBox=$('#tests'),testList=$('#testList');
+  const segs=[];for(let i=0;i<CFG.COUNT;i++){const d=document.createElement('div');d.className='seg';d.dataset.i=i;bar.appendChild(d);segs.push(d)}
+  const mid=CFG.COUNT/2|0,q=mid/2|0,left=segs.slice(0,mid-q).reverse(),right=segs.slice(mid+q);
+  const state={modeIdx:0,on:false,signal:'none',animToken:0,iconToken:0,sysBusy:false};
+  
+  // UPDATED MODES LIST
+  const MODES=['Audi','BMW','Mazda','Normal','USDM','Halogen'];
+  
+  const setModeLabel=()=>modeName.textContent=MODES[state.modeIdx].toUpperCase();
+  function clearSigIcons(){icoL.className='ico';icoR.className='ico';icoH.className='ico hazard'}
+  function clsAll(keepRed){segs.forEach(s=>{s.className='seg';s.style.transitionDuration='';if(keepRed)s.classList.add('on')});clearSigIcons()}
+  function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+  const tick=()=>sleep(CFG.RAF_MS);
+  const active=(token,dir)=>state.animToken===token&&state.signal===dir;
+  function iconsApply(icons,cls,add,token){if(token!==state.iconToken)return;icons.forEach(ic=>ic.classList[add?'add':'remove'](cls))}
+  async function systemSequence(kind){state.sysBusy=true;clsAll(kind==='goodbye');const half=mid;for(let i=0;i<half;i++){segs[i]?.classList.add('dim');segs[CFG.COUNT-1-i]?.classList.add('dim');await tick()}await sleep(CFG.SEQ_PAUSE);if(kind==='welcome'){for(let i=0;i<half;i++){segs[mid-1-i]?.classList.replace('dim','on');segs[mid+i]?.classList.replace('dim','on');await tick()}}else{for(let i=0;i<half;i++){segs[mid-1-i]?.classList.replace('on','dim');segs[mid+i]?.classList.replace('on','dim');await tick()}await sleep(CFG.SEQ_PAUSE);for(let i=0;i<half;i++){segs[i]?.classList.remove('dim');segs[CFG.COUNT-1-i]?.classList.remove('dim');await tick()}}state.sysBusy=false}
+  async function hazardFlash(cycles,keepBase){state.sysBusy=true;const all=[...left,...right];if(!keepBase)all.forEach(s=>s.classList.remove('on'));for(let c=0;c<cycles;c++){all.forEach(s=>s.classList.add('ind'));const itok=state.iconToken;iconsApply([icoL,icoR,icoH],'on',true,itok);await sleep(CFG.HAZ_ON);all.forEach(s=>s.classList.remove('ind'));iconsApply([icoL,icoR,icoH],'on',false,itok);await sleep(CFG.HAZ_OFF)}state.sysBusy=false}
+  function restoreRedDelayed(group){if(!state.on)return;setTimeout(()=>{group.forEach(s=>{s.classList.add('on');s.style.transitionDuration='.4s'});setTimeout(()=>group.forEach(s=>s.style.transitionDuration=''),420)},CFG.RETURN_TO_RED_DELAY)}
+  function normalizeArr(v){return Array.isArray(v)?v:[]}
+
+  function runAudi(primary=[],mirror=[],dir,token){primary=normalizeArr(primary);mirror=normalizeArr(mirror);const all=[...primary,...mirror];const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];const itok=state.iconToken;(async()=>{while(active(token,dir)){await sleep(CFG.AUDI_HOLD_OFF);if(!active(token,dir))break;iconsApply(sigIcos,'on',true,itok);for(let i=0;i<primary.length;i++){if(!active(token,dir))break;primary[i]?.classList.add('ind');if(mirror[i])mirror[i].classList.add('ind');await tick()}if(!active(token,dir))break;await sleep(CFG.AUDI_HOLD_ON);if(!active(token,dir))break;all.forEach(s=>s.classList.replace('ind','ind-dim'));iconsApply(sigIcos,'on',false,itok);await sleep(CFG.AUDI_FADE);all.forEach(s=>s.classList.remove('ind-dim'))}all.forEach(s=>s.className='seg');clearSigIcons();restoreRedDelayed(all)})()}
+  
+  function runBMW(primary=[],mirror=[],dir,token){primary=normalizeArr(primary);mirror=normalizeArr(mirror);const all=[...primary,...mirror];const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];const itok=state.iconToken;(async()=>{while(active(token,dir)){await sleep(CFG.BMW_HOLD_OFF);if(!active(token,dir))break;all.forEach(s=>{s.style.transitionDuration='.35s';s.classList.add('ind')});iconsApply(sigIcos,'on',true,itok);await sleep(CFG.BMW_FADE_IN);all.forEach(s=>{s.style.transitionDuration='0s';s.classList.remove('ind');s.offsetHeight;s.style.transitionDuration=''});iconsApply(sigIcos,'on',false,itok)}all.forEach(s=>s.className='seg');clearSigIcons();restoreRedDelayed(all)})()}
+  
+  function runMazda(primary=[],mirror=[],dir,token){primary=normalizeArr(primary);mirror=normalizeArr(mirror);const all=[...primary,...mirror];const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];const itok=state.iconToken;(async()=>{while(active(token,dir)){await sleep(CFG.MAZDA_HOLD_OFF);if(!active(token,dir))break;all.forEach(s=>{s.style.transitionDuration='0s';s.classList.add('ind');s.offsetHeight;s.style.transitionDuration='.3s'});iconsApply(sigIcos,'on',true,itok);await sleep(CFG.MAZDA_HOLD_ON);if(!active(token,dir))break;all.forEach(s=>s.classList.replace('ind','ind-dim'));iconsApply(sigIcos,'dim',true,itok);await sleep(CFG.MAZDA_FADE);all.forEach(s=>{s.classList.remove('ind-dim');s.style.transitionDuration='' });iconsApply(sigIcos,'dim',false,itok);iconsApply(sigIcos,'on',false,itok)}all.forEach(s=>s.className='seg');clearSigIcons();restoreRedDelayed(all)})()}
+
+  // NEW: Normal and USDM shared logic
+  function runSimpleBlink(primary=[],mirror=[],dir,token,type){
+    primary=normalizeArr(primary); mirror=normalizeArr(mirror);
+    const all=[...primary,...mirror];
+    const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];
+    const itok=state.iconToken;
+    const activeClass = type === 'USDM' ? 'usdm' : 'ind';
+    
+    // Explicitly disable transition for instant on/off
+    all.forEach(s => s.style.transition = 'none');
+
+    (async()=>{
+        while(active(token,dir)){
+            // OFF Phase
+            all.forEach(s => s.classList.remove(activeClass));
+            iconsApply(sigIcos,'on',false,itok);
+            await sleep(CFG.BLINK_OFF);
+            if(!active(token,dir)) break;
+
+            // ON Phase
+            all.forEach(s => s.classList.add(activeClass));
+            iconsApply(sigIcos,'on',true,itok);
+            await sleep(CFG.BLINK_ON);
+        }
+        // Restore transitions for future animations
+        all.forEach(s=>{
+            s.className='seg'; 
+            s.style.transition = '';
+        }); 
+        clearSigIcons();
+        restoreRedDelayed(all);
+    })()
+  }
+
+  // NEW: Halogen simulation
+  function runHalogen(primary=[],mirror=[],dir,token){
+    primary=normalizeArr(primary); mirror=normalizeArr(mirror);
+    const all=[...primary,...mirror];
+    const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];
+    const itok=state.iconToken;
+    
+    (async()=>{
+        while(active(token,dir)){
+            // OFF (Fade out slow)
+            // Simulating bulb cooling down
+            all.forEach(s => {
+                s.style.transitionDuration = '0.35s'; // Slow fade out
+                s.style.transitionTimingFunction = 'ease-in';
+                s.classList.remove('ind');
+            });
+            iconsApply(sigIcos,'on',false,itok);
+            await sleep(CFG.BLINK_OFF);
+            if(!active(token,dir)) break;
+
+            // ON (Fade in fast but not instant)
+            // Simulating filament heating up
+            all.forEach(s => {
+                s.style.transitionDuration = '0.12s'; // Fast fade in
+                s.style.transitionTimingFunction = 'ease-out';
+                s.classList.add('ind');
+            });
+            iconsApply(sigIcos,'on',true,itok);
+            await sleep(CFG.BLINK_ON);
+        }
+        all.forEach(s=>{s.className='seg'; s.style.transitionDuration='';});
+        clearSigIcons();
+        restoreRedDelayed(all);
+    })()
+  }
+
+  function activate(dir){
+      if(state.sysBusy)return;
+      if(state.signal===dir){
+          state.signal='none';state.animToken++;state.iconToken++;clearSigIcons();return
+      }
+      clsAll(state.on);
+      state.signal=dir;
+      const token=++state.animToken;++state.iconToken;
+      const groups=dir==='hazard'?[left,right]:(dir==='left'?[left,[]]:[right,[]]);
+      // Clear running lights for all segments in the active group to allow full blink
+      groups.forEach(g=>g.forEach(s=>s.classList.remove('on')));
+      
+      const mode=MODES[state.modeIdx];
+      
+      if(mode==='Audi') runAudi(...groups,dir,token);
+      else if(mode==='BMW') runBMW(...groups,dir,token);
+      else if(mode==='Mazda') runMazda(...groups,dir,token);
+      else if(mode==='Normal') runSimpleBlink(...groups,dir,token, 'Normal');
+      else if(mode==='USDM') runSimpleBlink(...groups,dir,token, 'USDM');
+      else if(mode==='Halogen') runHalogen(...groups,dir,token);
+  }
+
+  async function lockUnlock(){if(state.sysBusy)return;if(!state.on){state.on=true;await hazardFlash(2,false);await sleep(CFG.WELCOME_DELAY);await systemSequence('welcome')}else{state.on=false;await hazardFlash(1,true);await sleep(CFG.GOODBYE_DELAY);await systemSequence('goodbye')}}
+  function changeMode(){clsAll(state.on);state.modeIdx=(state.modeIdx+1)%MODES.length;setModeLabel()}
+  function toggleUI(){panel.style.display=panel.style.display==='none'?'':'none'}
+  const down=new Set();let tHoldTimer=null;
+  document.addEventListener('keydown',e=>{const k=e.key.toLowerCase();if(down.has(k))return;down.add(k);if(k==='f')lockUnlock();else if(k==='z')activate('left');else if(k==='c')activate('right');else if(k==='x')activate('hazard');else if(k==='m')changeMode();else if(k==='h')toggleUI();else if(k==='t'){if(tHoldTimer)clearTimeout(tHoldTimer);tHoldTimer=setTimeout(()=>{if(testsBox)testsBox.style.display='block';runSelfTests().then(()=>{const failed=testsBox.querySelectorAll('.fail').length;if(failed===0){setTimeout(()=>location.reload(),800)}})},500)}});
+  document.addEventListener('keyup',e=>{const k=e.key.toLowerCase();down.delete(k);if(k==='t'){if(tHoldTimer){clearTimeout(tHoldTimer);tHoldTimer=null}}});
+  window.addEventListener('blur',()=>down.clear());
+  function addResult(name,ok,err){const li=document.createElement('li');li.textContent=(ok?'PASS: ':'FAIL: ')+name+(ok?'':(err?' — '+(err.message?err.message:err):''));li.className=ok?'ok':'fail';testList.appendChild(li);testResults.push({name,ok,error:ok?null:(err&&err.message?err.message:String(err||''))})}
+  function setSummary(total,passed,ms){const s=document.getElementById('testSummary');s.textContent=passed+'/'+total+' passed in '+Math.round(ms)+' ms'}
+  function segClassCount(cls){let n=0;for(const s of segs){if(s.classList.contains(cls))n++}return n}
+  function iconsAreClear(){return icoL.className==='ico'&&icoR.className==='ico'&&icoH.className==='ico hazard'}
+  const testResults=[];
+  async function runSelfTests(){testResults.length=0;testList.textContent='';const t0=performance.now();
+    try{activate('left');await sleep(220);activate('left');addResult('left toggle',true)}catch(e){addResult('left toggle',false,e)}
+    try{activate('right');await sleep(220);activate('right');addResult('right toggle',true)}catch(e){addResult('right toggle',false,e)}
+    try{activate('hazard');await sleep(260);activate('hazard');addResult('hazard toggle resets icons',iconsAreClear(),'icons not cleared')}catch(e){addResult('hazard toggle resets icons',false,e)}
+    try{activate('left');await sleep(120);activate('left');addResult('left cancel clears all classes',segClassCount('ind')===0&&segClassCount('ind-dim')===0&&iconsAreClear(),'classes or icons linger')}catch(e){addResult('left cancel clears all classes',false,e)}
+    try{activate('right');await sleep(120);activate('hazard');await sleep(220);activate('hazard');addResult('right→hazard→off leaves icons clear',iconsAreClear(),'icons linger after hazard off')}catch(e){addResult('right→hazard→off leaves icons clear',false,e)}
+    try{const before=state.modeIdx;activate('left');await sleep(100);changeMode();await sleep(200);activate('left');await sleep(150);activate('left');addResult('mode change during signal is stable',segClassCount('ind')===0&&segClassCount('ind-dim')===0&&iconsAreClear()&&state.modeIdx!==before,'residue after mode change')}catch(e){addResult('mode change during signal is stable',false,e)}
+    try{clsAll(false);addResult('locked default has no lit segments',segClassCount('on')===0,'some segments lit on load')}catch(e){addResult('locked default has no lit segments',false,e)}
+    const total=testResults.length,passed=testResults.filter(t=>t.ok).length;setSummary(total,passed,performance.now()-t0)}
+  setModeLabel()
+})();
+</script>
+</body>
+</html>
