@@ -12,6 +12,10 @@ This is the initial pre-release of the **Rear Light Bar Simulator**, a high-fide
   * **Normal:** Traditional instant-response amber LED signaling.  
   * **USDM:** North American standard using the main red brake/running segments.  
   * **Halogen:** Advanced simulation of incandescent thermal physics (filament warm-up and cool-down).  
+* **Brake Light Integration:** Hold S for bright red override on all segments with maximum intensity.
+* **Reverse Light Mode:** Hold Q for 250ms to toggle white center segments simulating backup lights.
+* **Adjustable Segment Count:** Dynamic segment density control (20-120 segments) with real-time regeneration.
+* **Touch/Mobile Controls:** Responsive touch-optimized UI buttons for full functionality on mobile devices.
 * **Welcome/Goodbye Sequences:** Interactive lock/unlock animations that sweep across the bar.  
 * **Integrated Dashboard:** Real-time dashboard indicators that mirror the light bar's state.  
 * **Self-Test Suite:** Built-in automated diagnostic tool to verify animation stability and state cleanup.
@@ -26,6 +30,8 @@ This is the initial pre-release of the **Rear Light Bar Simulator**, a high-fide
 | **X** | **Hazard Lights** (Toggle) |
 | **M** | **Change Mode** (Cycles through signaling styles) |
 | **H** | **Toggle UI** (Clean mode \- hides the control panel) |
+| **S** | **Brake Lights** (Hold to activate bright red override) |
+| **Q** | **Reverse Lights** (Hold 250ms to toggle white center segments) |
 | **T (Hold)** | **Run Self-Tests** (Automated logic verification) |
 
 ## **🛠 Technical Details**
@@ -37,15 +43,15 @@ This is the initial pre-release of the **Rear Light Bar Simulator**, a high-fide
 
 ## **🚀 Installation & Usage**
 
-1. Download Rewritten\_TaillightSim.html.  
+1. Download TaillightSim.html (or clone the repository).  
 2. Open the file in any modern web browser.  
-3. Use the keyboard controls to interact with the light bar.
+3. Use the keyboard controls or touch buttons to interact with the light bar.
 
-## **🗺️ Roadmap (Coming Soon)**
+## **🗺️ Roadmap**
 
-* \[ \] Brake Light Integration (Bright red override)  
-* \[ \] Reverse Light Mode (White center segments)  
-* \[ \] Adjustable Bar Segment Count (Configurable density)  
-* \[ \] Touch/Mobile UI controls
+* \[x\] Brake Light Integration (Bright red override)  
+* \[x\] Reverse Light Mode (White center segments)  
+* \[x\] Adjustable Bar Segment Count (Configurable density)  
+* \[x\] Touch/Mobile UI controls
 
 *Developed for automotive enthusiasts and UI designers.*
