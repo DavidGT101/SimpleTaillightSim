@@ -18,10 +18,10 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui
 .usdm{background:var(--red);border-color:#ff4747;box-shadow:var(--glow-red)}
 
 /* Brake Light - Bright red override */
-.brake{background:#ff0000!important;border-color:#ff6666!important;box-shadow:0 0 8px #ff0000,0 0 20px #ff0000,0 0 35px #ff0000!important;opacity:1!important}
+.brake{background:#ff0000;border-color:#ff6666;box-shadow:0 0 8px #ff0000,0 0 20px #ff0000,0 0 35px #ff0000;opacity:1}
 
 /* Reverse Light - White center segments */
-.reverse{background:#ffffff!important;border-color:#e0e0e0!important;box-shadow:0 0 8px #ffffff,0 0 20px #ffffff,0 0 35px #ffffff!important;opacity:1!important}
+.reverse{background:#ffffff;border-color:#e0e0e0;box-shadow:0 0 8px #ffffff,0 0 20px #ffffff,0 0 35px #ffffff;opacity:1}
 
 .dash{display:flex;gap:26px;align-items:center;justify-content:center;height:34px;margin:8px 0 20px}
 .ico{width:30px;height:30px;opacity:0;transition:opacity .12s ease;color:var(--green);position:relative;background:none;box-shadow:none}
@@ -53,7 +53,7 @@ kbd{background:#3f3f3f;border:1px solid #666;border-bottom-color:#444;padding:6p
 /* Segment Count Control */
 .seg-control{margin-top:12px;padding-top:12px;border-top:1px solid #3a3a3a;font-size:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .seg-control label{color:#cfcfcf}
-.seg-control input[type="range"]{flex:1;min-width:150px;height:6px;background:#3a3a3a;border-radius:3px;outline:none;-webkit-appearance:none}
+.seg-control input[type="range"]{flex:1;min-width:150px;height:6px;background:#3a3a3a;border-radius:3px;outline:none;-webkit-appearance:none;appearance:none}
 .seg-control input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;background:var(--amber);border-radius:50%;cursor:pointer}
 .seg-control input[type="range"]::-moz-range-thumb{width:18px;height:18px;background:var(--amber);border-radius:50%;cursor:pointer;border:none}
 .seg-count-display{color:var(--amber);font-weight:600;min-width:50px}
