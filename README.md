@@ -36,6 +36,20 @@ This is the initial pre-release of the **Rear Light Bar Simulator**, a high-fide
 
 ## **🛠 Technical Details**
 
+## **🚀 Agent Inspector Setup**
+
+This workspace now includes a small HTTP server entrypoint for local debugging with AI Toolkit Agent Inspector.
+
+1. Install the workspace dependencies into the local environment:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --pre -r requirements.txt
+```
+
+2. Launch the app from VS Code with the `Debug TaillightSim HTTP Server` configuration.
+
+3. The simulator is served from `taillight_server.py` on `http://127.0.0.1:8088`.
+
 * **Architecture:** 100% Vanilla JavaScript (no frameworks).  
 * **Styling:** CSS Variables (Custom Properties) for dynamic "glow" effects and easy skinning.  
 * **Performance:** Optimized for 60FPS using a blend of CSS transitions and asynchronous timing.  
