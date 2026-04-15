@@ -15,7 +15,7 @@
     {
       "label": "Run TaillightSim HTTP Server",
       "type": "shell",
-      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe -m debugpy --listen 127.0.0.1:5679 -m agentdev run taillight_server.py --verbose --port 8088 -- --host 127.0.0.1 --port 8088",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe -m debugpy --listen 127.0.0.1:5679 -m agentdev run taillight_server.py --verbose --port 8088 -- --host 0.0.0.0 --port 8088",
       "isBackground": true,
       "options": {
         "cwd": "${workspaceFolder}"

@@ -48,7 +48,8 @@ This workspace now includes a small HTTP server entrypoint for local debugging w
 
 2. Launch the app from VS Code with the `Debug TaillightSim HTTP Server` configuration.
 
-3. The simulator is served from `taillight_server.py` on `http://127.0.0.1:8088`.
+3. The simulator is served from `taillight_server.py` on all interfaces (`0.0.0.0:8088`).
+  Open `http://<your-lan-ip>:8088` from other devices on the same network.
 
 * **Architecture:** 100% Vanilla JavaScript (no frameworks).  
 * **Styling:** CSS Variables (Custom Properties) for dynamic "glow" effects and easy skinning.  
