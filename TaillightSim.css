@@ -96,6 +96,6 @@ body.profile-mobile .dash{margin:4px 0 12px}
   .touch-btn{min-height:46px}
 }
 
-@media (max-height:760px){
+@media (max-height:760px) and (min-width:769px){
   .wrap{justify-content:flex-start}
 }

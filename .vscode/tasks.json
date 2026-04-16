@@ -3,14 +3,13 @@
   "tasks": [
     {
       "label": "Validate prerequisites",
-      "type": "aitk",
+      "type": "process",
       "command": "debug-check-prerequisites",
-      "args": {
-        "portOccupancy": [
-          5679,
-          8088
-        ]
-      }
+      "args": [
+        "portOccupancy",
+        "5679",
+        "8088"
+      ]
     },
     {
       "label": "Run TaillightSim HTTP Server",

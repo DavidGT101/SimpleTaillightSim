@@ -99,7 +99,18 @@
   
   const setModeLabel=()=>modeName.textContent=MODES[state.modeIdx].toUpperCase();
   function clearSigIcons(){icoL.className='ico';icoR.className='ico';icoH.className='ico hazard'}
-  function clsAll(keepRed){if(restoreTimeout){clearTimeout(restoreTimeout);restoreTimeout=null}segs.forEach(s=>{s.className='seg';s.style.transitionDuration='';if(keepRed)s.classList.add('on')});clearSigIcons();updateReverseLights()}
+  function clsAll(keepRed){
+    if(restoreTimeout){clearTimeout(restoreTimeout);restoreTimeout=null}
+    segs.forEach(s=>{
+      s.className='seg';
+      s.style.transition='';
+      s.style.transitionDuration='';
+      s.style.transitionTimingFunction='';
+      if(keepRed)s.classList.add('on')
+    });
+    clearSigIcons();
+    updateReverseLights()
+  }
   function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
   const tick=()=>sleep(CFG.RAF_MS);
   const active=(token,dir)=>state.animToken===token&&state.signal===dir;
@@ -148,11 +159,94 @@
   function restoreRedDelayed(group){if(!state.on)return;if(restoreTimeout)clearTimeout(restoreTimeout);restoreTimeout=setTimeout(()=>{restoreTimeout=null;group.forEach(s=>{s.classList.add('on');s.style.transitionDuration='.4s'});setTimeout(()=>{group.forEach(s=>s.style.transitionDuration='');updateReverseLights()},420)},CFG.RETURN_TO_RED_DELAY)}
   function normalizeArr(v){return Array.isArray(v)?v:[]}
 
-  function runAudi(primary=[],mirror=[],dir,token){primary=normalizeArr(primary);mirror=normalizeArr(mirror);const all=[...primary,...mirror];const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];const itok=state.iconToken;(async()=>{while(active(token,dir)){await sleep(CFG.AUDI_HOLD_OFF);if(!active(token,dir))break;iconsApply(sigIcos,'on',true,itok);for(let i=0;i<primary.length;i++){if(!active(token,dir))break;primary[i]?.classList.add('ind');if(mirror[i])mirror[i].classList.add('ind');await tick()}if(!active(token,dir))break;await sleep(CFG.AUDI_HOLD_ON);if(!active(token,dir))break;all.forEach(s=>s.classList.replace('ind','ind-dim'));iconsApply(sigIcos,'on',false,itok);await sleep(CFG.AUDI_FADE);all.forEach(s=>s.classList.remove('ind-dim'))}all.forEach(s=>s.className='seg');clearSigIcons();restoreRedDelayed(all)})()}
+  function runAudi(primary=[],mirror=[],dir,token){
+    primary=normalizeArr(primary);
+    mirror=normalizeArr(mirror);
+    const all=[...primary,...mirror];
+    const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];
+    const itok=state.iconToken;
+    (async()=>{
+      while(active(token,dir)){
+        await sleep(CFG.AUDI_HOLD_OFF);
+        if(!active(token,dir))break;
+        iconsApply(sigIcos,'on',true,itok);
+        for(let i=0;i<primary.length;i++){
+          if(!active(token,dir))break;
+          primary[i]?.classList.add('ind');
+          if(mirror[i])mirror[i].classList.add('ind');
+          await tick()
+        }
+        if(!active(token,dir))break;
+        await sleep(CFG.AUDI_HOLD_ON);
+        if(!active(token,dir))break;
+        all.forEach(s=>s.classList.replace('ind','ind-dim'));
+        iconsApply(sigIcos,'on',false,itok);
+        await sleep(CFG.AUDI_FADE);
+        if(!active(token,dir))break;
+        all.forEach(s=>s.classList.remove('ind-dim'))
+      }
+      if(state.signal==='none'){
+        all.forEach(s=>s.className='seg');
+        clearSigIcons();
+        restoreRedDelayed(all)
+      }
+    })()
+  }
   
-  function runBMW(primary=[],mirror=[],dir,token){primary=normalizeArr(primary);mirror=normalizeArr(mirror);const all=[...primary,...mirror];const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];const itok=state.iconToken;(async()=>{while(active(token,dir)){await sleep(CFG.BMW_HOLD_OFF);if(!active(token,dir))break;all.forEach(s=>{s.style.transitionDuration='.35s';s.classList.add('ind')});iconsApply(sigIcos,'on',true,itok);await sleep(CFG.BMW_FADE_IN);all.forEach(s=>{s.style.transitionDuration='0s';s.classList.remove('ind');s.offsetHeight;s.style.transitionDuration=''});iconsApply(sigIcos,'on',false,itok)}all.forEach(s=>s.className='seg');clearSigIcons();restoreRedDelayed(all)})()}
+  function runBMW(primary=[],mirror=[],dir,token){
+    primary=normalizeArr(primary);
+    mirror=normalizeArr(mirror);
+    const all=[...primary,...mirror];
+    const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];
+    const itok=state.iconToken;
+    (async()=>{
+      while(active(token,dir)){
+        await sleep(CFG.BMW_HOLD_OFF);
+        if(!active(token,dir))break;
+        all.forEach(s=>{s.style.transitionDuration='.35s';s.classList.add('ind')});
+        iconsApply(sigIcos,'on',true,itok);
+        await sleep(CFG.BMW_FADE_IN);
+        if(!active(token,dir))break;
+        all.forEach(s=>{s.style.transitionDuration='0s';s.classList.remove('ind');s.offsetHeight;s.style.transitionDuration=''});
+        iconsApply(sigIcos,'on',false,itok)
+      }
+      if(state.signal==='none'){
+        all.forEach(s=>s.className='seg');
+        clearSigIcons();
+        restoreRedDelayed(all)
+      }
+    })()
+  }
   
-  function runMazda(primary=[],mirror=[],dir,token){primary=normalizeArr(primary);mirror=normalizeArr(mirror);const all=[...primary,...mirror];const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];const itok=state.iconToken;(async()=>{while(active(token,dir)){await sleep(CFG.MAZDA_HOLD_OFF);if(!active(token,dir))break;all.forEach(s=>{s.style.transitionDuration='0s';s.classList.add('ind');s.offsetHeight;s.style.transitionDuration='.3s'});iconsApply(sigIcos,'on',true,itok);await sleep(CFG.MAZDA_HOLD_ON);if(!active(token,dir))break;all.forEach(s=>s.classList.replace('ind','ind-dim'));iconsApply(sigIcos,'dim',true,itok);await sleep(CFG.MAZDA_FADE);all.forEach(s=>{s.classList.remove('ind-dim');s.style.transitionDuration='' });iconsApply(sigIcos,'dim',false,itok);iconsApply(sigIcos,'on',false,itok)}all.forEach(s=>s.className='seg');clearSigIcons();restoreRedDelayed(all)})()}
+  function runMazda(primary=[],mirror=[],dir,token){
+    primary=normalizeArr(primary);
+    mirror=normalizeArr(mirror);
+    const all=[...primary,...mirror];
+    const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];
+    const itok=state.iconToken;
+    (async()=>{
+      while(active(token,dir)){
+        await sleep(CFG.MAZDA_HOLD_OFF);
+        if(!active(token,dir))break;
+        all.forEach(s=>{s.style.transitionDuration='0s';s.classList.add('ind');s.offsetHeight;s.style.transitionDuration='.3s'});
+        iconsApply(sigIcos,'on',true,itok);
+        await sleep(CFG.MAZDA_HOLD_ON);
+        if(!active(token,dir))break;
+        all.forEach(s=>s.classList.replace('ind','ind-dim'));
+        iconsApply(sigIcos,'dim',true,itok);
+        await sleep(CFG.MAZDA_FADE);
+        if(!active(token,dir))break;
+        all.forEach(s=>{s.classList.remove('ind-dim');s.style.transitionDuration=''});
+        iconsApply(sigIcos,'dim',false,itok);
+        iconsApply(sigIcos,'on',false,itok)
+      }
+      if(state.signal==='none'){
+        all.forEach(s=>s.className='seg');
+        clearSigIcons();
+        restoreRedDelayed(all)
+      }
+    })()
+  }
 
   function runSimpleBlink(primary=[],mirror=[],dir,token,type){
     primary=normalizeArr(primary); mirror=normalizeArr(mirror);
@@ -171,9 +265,11 @@
             iconsApply(sigIcos,'on',true,itok);
             await sleep(CFG.BLINK_ON);
         }
-        all.forEach(s=>{s.className='seg'; s.style.transition = ''}); 
-        clearSigIcons();
-        restoreRedDelayed(all);
+        if(state.signal==='none'){
+          all.forEach(s=>{s.className='seg'; s.style.transition = ''});
+          clearSigIcons();
+          restoreRedDelayed(all);
+        }
     })()
   }
 
@@ -200,9 +296,11 @@
             iconsApply(sigIcos,'on',true,itok);
             await sleep(CFG.BLINK_ON);
         }
-      all.forEach(s=>{s.className='seg'; s.style.transitionDuration='';});
-      clearSigIcons();
-      restoreRedDelayed(all);
+      if(state.signal==='none'){
+        all.forEach(s=>{s.className='seg'; s.style.transitionDuration='';});
+        clearSigIcons();
+        restoreRedDelayed(all);
+      }
     })()
     }
 
@@ -360,6 +458,8 @@
   function addResult(name,ok,err){const li=document.createElement('li');li.textContent=(ok?'PASS: ':'FAIL: ')+name+(ok?'':(err?' — '+(err.message?err.message:err):''));li.className=ok?'ok':'fail';testList.appendChild(li);testResults.push({name,ok,error:ok?null:(err&&err.message?err.message:String(err||''))})}
   function setSummary(total,passed,ms){const s=document.getElementById('testSummary');s.textContent=passed+'/'+total+' passed in '+Math.round(ms)+' ms'}
   function segClassCount(cls){let n=0;const len=segs.length;for(let i=0;i<len;i++)if(segs[i].classList.contains(cls))n++;return n}
+  function groupHasClass(group,cls){for(let i=0;i<group.length;i++)if(group[i].classList.contains(cls))return true;return false}
+  function stopSignalIfActive(){if(state.signal==='left')activate('left');else if(state.signal==='right')activate('right');else if(state.signal==='hazard')activate('hazard')}
   function iconsAreClear(){return icoL.className==='ico'&&icoR.className==='ico'&&icoH.className==='ico hazard'}
   function dispatchKey(type,key){document.dispatchEvent(new KeyboardEvent(type,{key,bubbles:true}))}
   const testResults=[];
@@ -369,6 +469,8 @@
     try{activate('hazard');await sleep(260);activate('hazard');addResult('hazard toggle resets icons',iconsAreClear(),'icons not cleared')}catch(e){addResult('hazard toggle resets icons',false,e)}
     try{activate('left');await sleep(120);activate('left');addResult('left cancel clears all classes',segClassCount('ind')===0&&segClassCount('ind-dim')===0&&iconsAreClear(),'classes or icons linger')}catch(e){addResult('left cancel clears all classes',false,e)}
     try{activate('right');await sleep(120);activate('hazard');await sleep(220);activate('hazard');addResult('right→hazard→off leaves icons clear',iconsAreClear(),'icons linger after hazard off')}catch(e){addResult('right→hazard→off leaves icons clear',false,e)}
+    try{const prevOn=state.on,prevMode=state.modeIdx;state.on=true;state.modeIdx=3;setModeLabel();clsAll(true);activate('hazard');await sleep(140);activate('left');await sleep(CFG.RETURN_TO_RED_DELAY+140);const redLeak=groupHasClass(left,'on');stopSignalIfActive();state.modeIdx=prevMode;setModeLabel();state.on=prevOn;clsAll(state.on);addResult('hazard→left keeps active side non-red',!redLeak,'running red restored on active indicator side')}catch(e){stopSignalIfActive();addResult('hazard→left keeps active side non-red',false,e)}
+    try{const prevOn=state.on,prevMode=state.modeIdx;state.on=true;state.modeIdx=3;setModeLabel();clsAll(true);activate('left');await sleep(140);activate('hazard');await sleep(CFG.RETURN_TO_RED_DELAY+140);const redLeak=groupHasClass(left,'on')||groupHasClass(right,'on');stopSignalIfActive();state.modeIdx=prevMode;setModeLabel();state.on=prevOn;clsAll(state.on);addResult('left→hazard keeps both sides non-red',!redLeak,'running red appeared during hazard')}catch(e){stopSignalIfActive();addResult('left→hazard keeps both sides non-red',false,e)}
     try{clsAll(false);deactivateBrake();activateBrake();const activeWhileHeld=state.brakeActive&&segClassCount('brake')>0&&statusBrake.classList.contains('brake')&&statusBrake.classList.contains('active');deactivateBrake();await sleep(60);const clearOnRelease=!state.brakeActive&&segClassCount('brake')===0&&!statusBrake.classList.contains('brake')&&!statusBrake.classList.contains('active');addResult('brake hold press/release',activeWhileHeld&&clearOnRelease,'held='+activeWhileHeld+', release='+clearOnRelease)}catch(e){addResult('brake hold press/release',false,e)}
     try{if(state.reverseActive)toggleReverse();if(qHoldTimer){clearTimeout(qHoldTimer);qHoldTimer=null}down.delete('q');const shortHold=Math.max(60,CFG.REVERSE_HOLD_MS-90);dispatchKey('keydown','q');await sleep(shortHold);dispatchKey('keyup','q');await sleep(80);const shortDoesNotToggle=!state.reverseActive;dispatchKey('keydown','q');await sleep(CFG.REVERSE_HOLD_MS+120);const longDoesToggle=state.reverseActive;dispatchKey('keyup','q');await sleep(60);const reverseStatusMatches=statusReverse.classList.contains('reverse')===state.reverseActive;if(state.reverseActive)toggleReverse();addResult('reverse hold timing threshold',shortDoesNotToggle&&longDoesToggle&&reverseStatusMatches,'short='+shortDoesNotToggle+', long='+longDoesToggle+', status='+reverseStatusMatches)}catch(e){if(state.reverseActive)toggleReverse();addResult('reverse hold timing threshold',false,e)}
     try{const before=state.modeIdx;activate('left');await sleep(100);changeMode();await sleep(200);activate('left');await sleep(150);activate('left');addResult('mode change during signal is stable',segClassCount('ind')===0&&segClassCount('ind-dim')===0&&iconsAreClear()&&state.modeIdx!==before,'residue after mode change')}catch(e){addResult('mode change during signal is stable',false,e)}

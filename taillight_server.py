@@ -13,8 +13,17 @@ ROOT = Path(__file__).resolve().parent
 
 
 class TaillightRequestHandler(SimpleHTTPRequestHandler):
+    HTTP_METHODS = {"GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "TRACE", "CONNECT"}
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
+
+    @staticmethod
+    def _sanitize_log_text(text: str, *, limit: int = 220) -> str:
+        sanitized = "".join(ch if 32 <= ord(ch) <= 126 else f"\\x{ord(ch):02x}" for ch in text)
+        if len(sanitized) > limit:
+            return f"{sanitized[:limit]}...(truncated)"
+        return sanitized
 
     def do_GET(self) -> None:
         parsed = urlsplit(self.path)
@@ -22,6 +31,15 @@ class TaillightRequestHandler(SimpleHTTPRequestHandler):
             self.path = "/TaillightSim.html"
             if parsed.query:
                 self.path = f"{self.path}?{parsed.query}"
+        if parsed.path == "/favicon.ico":
+            favicon = ROOT / "favicon.ico"
+            if favicon.is_file():
+                self.path = "/favicon.ico"
+                return super().do_GET()
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if parsed.path == "/healthz":
             payload = json.dumps({"ok": True, "app": "SimpleTaillightSim"}).encode("utf-8")
             self.send_response(200)
@@ -37,8 +55,24 @@ class TaillightRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
+    def log_error(self, format: str, *args) -> None:  # noqa: A003
+        rendered = format % args if args else format
+        if "Bad request version" in rendered:
+            print(f"{self.address_string()} - Ignored non-HTTP traffic on HTTP port (likely HTTPS/TLS)")
+            return
+        self.log_message(format, *args)
+
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+        if str(code) == "400" and self.requestline:
+            method = self.requestline.split(" ", 1)[0]
+            if method not in self.HTTP_METHODS:
+                print(f"{self.address_string()} - Rejected malformed/non-HTTP request on HTTP port (400)")
+                return
+        super().log_request(code, size)
+
     def log_message(self, format: str, *args) -> None:  # noqa: A003
-        print(f"{self.address_string()} - {format % args}")
+        rendered = format % args if args else format
+        print(f"{self.address_string()} - {self._sanitize_log_text(rendered)}")
 
 
 def parse_args() -> argparse.Namespace:
