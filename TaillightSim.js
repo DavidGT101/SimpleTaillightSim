@@ -7,7 +7,10 @@
     MAZDA_HOLD_ON:150,MAZDA_FADE:300,MAZDA_HOLD_OFF:350,
     HAZ_ON:150,HAZ_OFF:150,
     BLINK_ON:350, BLINK_OFF:350, // Timing for Normal/USDM/Halogen
-    REVERSE_HOLD_MS:250 // Hold duration for reverse toggle
+    REVERSE_HOLD_MS:250, // Hold duration for reverse toggle
+    REVERSE_TEST_TAP_COUNT:5, // Quick taps on Reverse to trigger tests on mobile
+    REVERSE_TEST_WINDOW_MS:2200, // Time window to collect reverse taps for test trigger
+    TEST_RELOAD_DELAY_MS:2000 // Pause after all tests pass before page reload
   };
   const $=(q,el=document)=>el.querySelector(q);
   const bar=$('#bar'),modeName=$('#modeName'),panel=$('#panel');
@@ -15,6 +18,8 @@
   const testsBox=$('#tests'),testList=$('#testList');
   const statusBrake=$('#statusBrake'),statusReverse=$('#statusReverse');
   const segCountInput=$('#segCount'),segCountDisplay=$('#segCountDisplay');
+  const MOBILE_DEFAULT_SEGMENTS=20;
+  const PROFILE_CLASSES=['profile-mobile','profile-desktop'];
   
   // Dynamic segment management
   let segs=[],left=[],right=[],mid=0;
@@ -25,6 +30,9 @@
   
   // Track pending restore timeout to prevent interference between signals
   let restoreTimeout=null;
+  let reverseTestTapCount=0;
+  let reverseTestTapTimer=null;
+  let selfTestsRunning=false;
   
   // Generate segments dynamically
   function generateSegments(count){
@@ -46,8 +54,46 @@
     updateReverseLights();
   }
   
-  // Initialize with default segments
-  generateSegments(CFG.COUNT);
+  function getProfileOverride(search=window.location.search){
+    try{
+      const profileRaw=new URLSearchParams(search).get('profile');
+      if(!profileRaw)return null;
+      const profile=profileRaw.trim().toLowerCase();
+      if(profile==='mobile'||profile==='m')return 'mobile';
+      if(profile==='desktop'||profile==='pc'||profile==='d')return 'desktop';
+    }catch(_err){
+      // Ignore malformed query strings and fall back to auto detection.
+    }
+    return null;
+  }
+
+  function applyProfileClass(profile){
+    document.body.classList.remove(...PROFILE_CLASSES);
+    if(profile==='mobile')document.body.classList.add('profile-mobile');
+    else if(profile==='desktop')document.body.classList.add('profile-desktop');
+  }
+
+  function getInitialSegmentCount(options={}){
+    const sliderCount=parseInt(options.sliderValue??(segCountInput?.value||''),10);
+    const fallback=Number.isNaN(sliderCount)?CFG.COUNT:sliderCount;
+    const profileOverride=options.profileOverride??getProfileOverride();
+    if(profileOverride==='mobile')return MOBILE_DEFAULT_SEGMENTS;
+    if(profileOverride==='desktop')return fallback;
+    const ua=options.userAgent??(navigator.userAgent||'');
+    const uaMobile=/android|iphone|ipad|ipod|mobile/i.test(ua);
+    const narrowViewport=options.narrowViewport??window.matchMedia('(max-width: 768px)').matches;
+    const coarsePointer=options.coarsePointer??window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+    const isMobileView=uaMobile||narrowViewport||coarsePointer;
+    return isMobileView?MOBILE_DEFAULT_SEGMENTS:fallback;
+  }
+
+  // Initialize based on viewport context (mobile defaults to fewer segments)
+  const activeProfileOverride=getProfileOverride();
+  applyProfileClass(activeProfileOverride);
+  const initialSegments=getInitialSegmentCount({profileOverride:activeProfileOverride});
+  if(segCountInput)segCountInput.value=String(initialSegments);
+  if(segCountDisplay)segCountDisplay.textContent=String(initialSegments);
+  generateSegments(initialSegments);
   
   const MODES=['Audi','BMW','Mazda','Normal','USDM','Halogen'];
   
@@ -184,6 +230,40 @@
   async function lockUnlock(){if(state.sysBusy)return;if(restoreTimeout){clearTimeout(restoreTimeout);restoreTimeout=null}if(!state.on){state.on=true;await hazardFlash(2,false);await sleep(CFG.WELCOME_DELAY);await systemSequence('welcome')}else{state.on=false;await hazardFlash(1,true);await sleep(CFG.GOODBYE_DELAY);await systemSequence('goodbye')}}
   function changeMode(){clsAll(state.on);state.modeIdx=(state.modeIdx+1)%MODES.length;setModeLabel()}
   function toggleUI(){panel.style.display=panel.style.display==='none'?'':'none'}
+  function resetReverseTestTapSequence(){reverseTestTapCount=0;if(reverseTestTapTimer){clearTimeout(reverseTestTapTimer);reverseTestTapTimer=null}}
+  async function triggerSelfTests(){
+    if(!testsBox||selfTestsRunning)return;
+    testsBox.style.display='block';
+    selfTestsRunning=true;
+    try{
+      await runSelfTests();
+      const failed=testsBox.querySelectorAll('.fail').length;
+      if(failed===0){
+        if(!state.sysBusy){
+          const audiModeIdx=0;
+          if(state.signal==='hazard')activate('hazard');
+          if(state.modeIdx!==audiModeIdx){
+            state.modeIdx=audiModeIdx;
+            setModeLabel();
+          }
+          activate('hazard');
+        }
+        await sleep(CFG.TEST_RELOAD_DELAY_MS);
+        location.reload();
+      }
+    }finally{
+      selfTestsRunning=false;
+    }
+  }
+  function registerReverseTestTap(){
+    reverseTestTapCount+=1;
+    if(reverseTestTapTimer)clearTimeout(reverseTestTapTimer);
+    reverseTestTapTimer=setTimeout(()=>resetReverseTestTapSequence(),CFG.REVERSE_TEST_WINDOW_MS);
+    if(reverseTestTapCount>=CFG.REVERSE_TEST_TAP_COUNT){
+      resetReverseTestTapSequence();
+      triggerSelfTests();
+    }
+  }
   
   // Segment count control
   segCountInput.addEventListener('input',e=>{
@@ -212,13 +292,7 @@
     }
     else if(k==='t'){
       if(tHoldTimer)clearTimeout(tHoldTimer);
-      tHoldTimer=setTimeout(()=>{
-        if(testsBox)testsBox.style.display='block';
-        runSelfTests().then(()=>{
-          const failed=testsBox.querySelectorAll('.fail').length;
-          if(failed===0){setTimeout(()=>location.reload(),800)}
-        })
-      },500)
+      tHoldTimer=setTimeout(()=>triggerSelfTests(),500)
     }
   });
   
@@ -253,29 +327,32 @@
     if(btnCache.mode)btnCache.mode.addEventListener('click',()=>changeMode());
     
     if(btnCache.brake){
-      btnCache.brake.addEventListener('touchstart',e=>{e.preventDefault();activateBrake()});
-      btnCache.brake.addEventListener('touchend',e=>{e.preventDefault();deactivateBrake()});
-      btnCache.brake.addEventListener('mousedown',()=>activateBrake());
-      btnCache.brake.addEventListener('mouseup',()=>deactivateBrake());
-      btnCache.brake.addEventListener('mouseleave',()=>deactivateBrake());
+      const stopBrake=()=>deactivateBrake();
+      btnCache.brake.addEventListener('pointerdown',e=>{e.preventDefault();activateBrake()});
+      btnCache.brake.addEventListener('pointerup',stopBrake);
+      btnCache.brake.addEventListener('pointercancel',stopBrake);
+      btnCache.brake.addEventListener('pointerleave',stopBrake);
     }
     
     if(btnCache.reverse){
       let reverseTimer=null;
-      btnCache.reverse.addEventListener('touchstart',e=>{
-        e.preventDefault();
-        reverseTimer=setTimeout(()=>toggleReverse(),CFG.REVERSE_HOLD_MS);
-      });
-      btnCache.reverse.addEventListener('touchend',e=>{
-        e.preventDefault();
+      let reverseHoldTriggered=false;
+      const clearReverseTimer=()=>{
         if(reverseTimer){clearTimeout(reverseTimer);reverseTimer=null}
+      };
+      const endReversePress=(countAsTap)=>{
+        clearReverseTimer();
+        if(countAsTap&&!reverseHoldTriggered)registerReverseTestTap();
+      };
+      btnCache.reverse.addEventListener('pointerdown',e=>{
+        e.preventDefault();
+        reverseHoldTriggered=false;
+        clearReverseTimer();
+        reverseTimer=setTimeout(()=>{reverseHoldTriggered=true;resetReverseTestTapSequence();toggleReverse();reverseTimer=null},CFG.REVERSE_HOLD_MS);
       });
-      btnCache.reverse.addEventListener('mousedown',()=>{
-        reverseTimer=setTimeout(()=>toggleReverse(),CFG.REVERSE_HOLD_MS);
-      });
-      btnCache.reverse.addEventListener('mouseup',()=>{
-        if(reverseTimer){clearTimeout(reverseTimer);reverseTimer=null}
-      });
+      btnCache.reverse.addEventListener('pointerup',()=>endReversePress(true));
+      btnCache.reverse.addEventListener('pointercancel',()=>endReversePress(false));
+      btnCache.reverse.addEventListener('pointerleave',()=>endReversePress(false));
     }
   };
   
@@ -284,6 +361,7 @@
   function setSummary(total,passed,ms){const s=document.getElementById('testSummary');s.textContent=passed+'/'+total+' passed in '+Math.round(ms)+' ms'}
   function segClassCount(cls){let n=0;const len=segs.length;for(let i=0;i<len;i++)if(segs[i].classList.contains(cls))n++;return n}
   function iconsAreClear(){return icoL.className==='ico'&&icoR.className==='ico'&&icoH.className==='ico hazard'}
+  function dispatchKey(type,key){document.dispatchEvent(new KeyboardEvent(type,{key,bubbles:true}))}
   const testResults=[];
   async function runSelfTests(){testResults.length=0;testList.textContent='';const t0=performance.now();
     try{activate('left');await sleep(220);activate('left');addResult('left toggle',true)}catch(e){addResult('left toggle',false,e)}
@@ -291,8 +369,11 @@
     try{activate('hazard');await sleep(260);activate('hazard');addResult('hazard toggle resets icons',iconsAreClear(),'icons not cleared')}catch(e){addResult('hazard toggle resets icons',false,e)}
     try{activate('left');await sleep(120);activate('left');addResult('left cancel clears all classes',segClassCount('ind')===0&&segClassCount('ind-dim')===0&&iconsAreClear(),'classes or icons linger')}catch(e){addResult('left cancel clears all classes',false,e)}
     try{activate('right');await sleep(120);activate('hazard');await sleep(220);activate('hazard');addResult('right→hazard→off leaves icons clear',iconsAreClear(),'icons linger after hazard off')}catch(e){addResult('right→hazard→off leaves icons clear',false,e)}
+    try{clsAll(false);deactivateBrake();activateBrake();const activeWhileHeld=state.brakeActive&&segClassCount('brake')>0&&statusBrake.classList.contains('brake')&&statusBrake.classList.contains('active');deactivateBrake();await sleep(60);const clearOnRelease=!state.brakeActive&&segClassCount('brake')===0&&!statusBrake.classList.contains('brake')&&!statusBrake.classList.contains('active');addResult('brake hold press/release',activeWhileHeld&&clearOnRelease,'held='+activeWhileHeld+', release='+clearOnRelease)}catch(e){addResult('brake hold press/release',false,e)}
+    try{if(state.reverseActive)toggleReverse();if(qHoldTimer){clearTimeout(qHoldTimer);qHoldTimer=null}down.delete('q');const shortHold=Math.max(60,CFG.REVERSE_HOLD_MS-90);dispatchKey('keydown','q');await sleep(shortHold);dispatchKey('keyup','q');await sleep(80);const shortDoesNotToggle=!state.reverseActive;dispatchKey('keydown','q');await sleep(CFG.REVERSE_HOLD_MS+120);const longDoesToggle=state.reverseActive;dispatchKey('keyup','q');await sleep(60);const reverseStatusMatches=statusReverse.classList.contains('reverse')===state.reverseActive;if(state.reverseActive)toggleReverse();addResult('reverse hold timing threshold',shortDoesNotToggle&&longDoesToggle&&reverseStatusMatches,'short='+shortDoesNotToggle+', long='+longDoesToggle+', status='+reverseStatusMatches)}catch(e){if(state.reverseActive)toggleReverse();addResult('reverse hold timing threshold',false,e)}
     try{const before=state.modeIdx;activate('left');await sleep(100);changeMode();await sleep(200);activate('left');await sleep(150);activate('left');addResult('mode change during signal is stable',segClassCount('ind')===0&&segClassCount('ind-dim')===0&&iconsAreClear()&&state.modeIdx!==before,'residue after mode change')}catch(e){addResult('mode change during signal is stable',false,e)}
     try{clsAll(false);addResult('locked default has no lit segments',segClassCount('on')===0,'some segments lit on load')}catch(e){addResult('locked default has no lit segments',false,e)}
+    try{const parsedMobile=getProfileOverride('?profile=mobile');const parsedDesktop=getProfileOverride('?profile=desktop');const forcedMobile=getInitialSegmentCount({profileOverride:parsedMobile,sliderValue:60,userAgent:'Mozilla/5.0',narrowViewport:false,coarsePointer:false});const forcedDesktop=getInitialSegmentCount({profileOverride:parsedDesktop,sliderValue:60,userAgent:'Mozilla/5.0',narrowViewport:true,coarsePointer:true});addResult('profile override defaults',forcedMobile===MOBILE_DEFAULT_SEGMENTS&&forcedDesktop===60,'mobile='+forcedMobile+', desktop='+forcedDesktop)}catch(e){addResult('profile override defaults',false,e)}
     const total=testResults.length,passed=testResults.filter(t=>t.ok).length;setSummary(total,passed,performance.now()-t0)}
   
   setModeLabel();

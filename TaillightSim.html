@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=1024" />
-  <title>Rear Light Bar • PC</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Rear Light Bar</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
@@ -18,18 +18,16 @@
     <div id="ico-right" class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 5l7 7-7 7V5z"/></svg></div>
   </div>
   <div class="panel" id="panel">
-    <h2>Controls</h2>
-    <div class="keys">
-      <div class="key"><kbd>F</kbd> Lock / Unlock</div>
-      <div class="key"><kbd>Z</kbd> Left signal</div>
-      <div class="key"><kbd>X</kbd> Hazard</div>
-      <div class="key"><kbd>C</kbd> Right signal</div>
-      <div class="key"><kbd>M</kbd> Change mode</div>
-      <div class="key"><kbd>H</kbd> Toggle UI</div>
-      <div class="key"><kbd>S</kbd> Brake (hold)</div>
-      <div class="key"><kbd>Q</kbd> Reverse (hold 250ms)</div>
-    </div>
     <div class="mode">Mode: <b id="modeName">Audi</b></div>
+    <div class="touch-controls" id="touchControls">
+      <button class="touch-btn" id="btnLock" type="button">Lock/Unlock</button>
+      <button class="touch-btn" id="btnLeft" type="button">◀ Left</button>
+      <button class="touch-btn" id="btnHazard" type="button">⚠ Hazard</button>
+      <button class="touch-btn" id="btnRight" type="button">Right ▶</button>
+      <button class="touch-btn" id="btnBrake" type="button">Brake</button>
+      <button class="touch-btn" id="btnReverse" type="button">Reverse</button>
+      <button class="touch-btn" id="btnMode" type="button">Change Mode</button>
+    </div>
     <div class="seg-control">
       <label for="segCount">Segments:</label>
       <input type="range" id="segCount" min="20" max="120" step="10" value="60">
@@ -40,15 +38,6 @@
       <div class="status-item"><span class="status-dot" id="statusReverse"></span> Reverse</div>
     </div>
     <div class="tests" id="tests"><strong>Self-tests</strong><div id="testSummary"></div><ul id="testList"></ul></div>
-  </div>
-  <div class="touch-controls" id="touchControls">
-    <button class="touch-btn" id="btnLock">Lock/Unlock</button>
-    <button class="touch-btn" id="btnLeft">◀ Left</button>
-    <button class="touch-btn" id="btnHazard">⚠ Hazard</button>
-    <button class="touch-btn" id="btnRight">Right ▶</button>
-    <button class="touch-btn" id="btnBrake">Brake</button>
-    <button class="touch-btn" id="btnReverse">Reverse</button>
-    <button class="touch-btn" id="btnMode">Change Mode</button>
   </div>
 </div>
 <script src="TaillightSim.js"></script>

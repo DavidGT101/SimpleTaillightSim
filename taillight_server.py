@@ -6,6 +6,7 @@ import socket
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 ROOT = Path(__file__).resolve().parent
@@ -16,9 +17,12 @@ class TaillightRequestHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
     def do_GET(self) -> None:
-        if self.path in {"/", "/index.html"}:
+        parsed = urlsplit(self.path)
+        if parsed.path in {"/", "/index.html"}:
             self.path = "/TaillightSim.html"
-        if self.path == "/healthz":
+            if parsed.query:
+                self.path = f"{self.path}?{parsed.query}"
+        if parsed.path == "/healthz":
             payload = json.dumps({"ok": True, "app": "SimpleTaillightSim"}).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
