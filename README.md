@@ -35,10 +35,47 @@ This is the initial pre-release of the **Rear Light Bar Simulator**, a high-fide
 | **T (Hold)** | **Run Self-Tests** (Automated logic verification) |
 
 ## **🛠 Technical Details**
+* **Architecture:** 100% Vanilla JavaScript (no frameworks).  
+* **Styling:** CSS Variables (Custom Properties) for dynamic "glow" effects and easy skinning.  
+* **Performance:** Optimized for 60FPS using a blend of CSS transitions and asynchronous timing.  
+* **Assets:** Inline SVGs and Inter typeface for a modern, premium aesthetic.
 
-## **🚀 Agent Inspector Setup**
+## **🚀 Installation & Usage**
 
-This workspace now includes a small HTTP server entrypoint for local debugging with AI Toolkit Agent Inspector.
+### **Option 1: Standalone HTML (Quickest)**
+
+Use this if you only want to run the simulator on your current device.
+
+1. Download `TaillightSim.html` (or clone this repository).  
+2. Open `TaillightSim.html` in any modern web browser.  
+3. Use keyboard controls or touch buttons to interact with the light bar.
+
+### **Option 2: Local HTTP Server (LAN / Other Devices)**
+
+Use this if you want to access the simulator from phones/tablets/computers on the same network.
+
+1. Open a terminal in the project folder.  
+2. Start the server:
+
+```powershell
+python taillight_server.py --host 0.0.0.0 --port 8088
+```
+
+If you are using the workspace virtual environment:
+
+```powershell
+.\.venv\Scripts\python.exe taillight_server.py --host 0.0.0.0 --port 8088
+```
+
+3. On this machine, open `http://127.0.0.1:8088`.  
+4. On other devices on the same network, open `http://<your-lan-ip>:8088`.  
+5. If another device cannot connect, check firewall rules and make sure all devices are on the same local network.
+
+Press `Ctrl+C` in the terminal to stop the server.
+
+## **🚀 Agent Inspector Setup (Optional)**
+
+This workspace includes an HTTP server entrypoint for local debugging with AI Toolkit Agent Inspector.
 
 1. Install the workspace dependencies into the local environment:
 
@@ -48,19 +85,8 @@ This workspace now includes a small HTTP server entrypoint for local debugging w
 
 2. Launch the app from VS Code with the `Debug TaillightSim HTTP Server` configuration.
 
-3. The simulator is served from `taillight_server.py` on all interfaces (`0.0.0.0:8088`).
-  Open `http://<your-lan-ip>:8088` from other devices on the same network.
-
-* **Architecture:** 100% Vanilla JavaScript (no frameworks).  
-* **Styling:** CSS Variables (Custom Properties) for dynamic "glow" effects and easy skinning.  
-* **Performance:** Optimized for 60FPS using a blend of CSS transitions and asynchronous timing.  
-* **Assets:** Inline SVGs and Inter typeface for a modern, premium aesthetic.
-
-## **🚀 Installation & Usage**
-
-1. Download TaillightSim.html (or clone the repository).  
-2. Open the file in any modern web browser.  
-3. Use the keyboard controls or touch buttons to interact with the light bar.
+3. The simulator is served by `taillight_server.py` on all interfaces (`0.0.0.0:8088`).
+   Open `http://<your-lan-ip>:8088` from other devices on the same network.
 
 ## **🗺️ Roadmap**
 
