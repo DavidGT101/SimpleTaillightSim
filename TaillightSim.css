@@ -2,8 +2,8 @@
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial;display:flex;align-items:center;justify-content:center;min-height:100vh;min-height:100dvh}
 .wrap{width:min(var(--w),96vw);min-height:100vh;min-height:100dvh;padding:20px 16px calc(20px + env(safe-area-inset-bottom));text-align:center;display:flex;flex-direction:column;justify-content:center}
-.bar-shell{display:flex;justify-content:center;margin:28px auto 18px}
-.bar{display:flex;gap:var(--gap)}
+.bar-shell{display:flex;justify-content:center;align-items:center;width:100%;margin:28px auto 18px;overflow:visible}
+.bar{display:flex;gap:var(--gap);flex:0 0 auto;transform-origin:center center}
 .seg{width:var(--seg);height:calc(var(--seg)*2);background:var(--seg-off);border:1px solid var(--seg-off-br);border-radius:var(--radius);transition:background-color .18s ease,box-shadow .18s ease,border-color .18s ease,opacity .18s ease}
 
 /* Standard Red Running Light */

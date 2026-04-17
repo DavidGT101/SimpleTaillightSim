@@ -13,7 +13,7 @@
     TEST_RELOAD_DELAY_MS:2000 // Pause after all tests pass before page reload
   };
   const $=(q,el=document)=>el.querySelector(q);
-  const bar=$('#bar'),modeName=$('#modeName'),panel=$('#panel');
+  const bar=$('#bar'),barShell=$('.bar-shell'),modeName=$('#modeName'),panel=$('#panel');
   const icoL=$('#ico-left'),icoR=$('#ico-right'),icoH=$('#ico-haz');
   const testsBox=$('#tests'),testList=$('#testList');
   const statusBrake=$('#statusBrake'),statusReverse=$('#statusReverse');
@@ -33,6 +33,20 @@
   let reverseTestTapCount=0;
   let reverseTestTapTimer=null;
   let selfTestsRunning=false;
+
+  function fitLightbarToShell(){
+    if(!barShell||!bar)return;
+    requestAnimationFrame(()=>{
+      bar.style.transform='scale(1)';
+      const shellWidth=barShell.clientWidth;
+      const barWidth=bar.scrollWidth;
+      if(!shellWidth||!barWidth)return;
+      const glowAllowancePx=56;
+      const availableWidth=Math.max(1,shellWidth-glowAllowancePx);
+      const scale=Math.min(1,availableWidth/barWidth);
+      bar.style.transform=`scale(${scale})`;
+    });
+  }
   
   // Generate segments dynamically
   function generateSegments(count){
@@ -52,6 +66,7 @@
     right=segs.slice(mid+q);
     if(state.on)segs.forEach(s=>s.classList.add('on'));
     updateReverseLights();
+    fitLightbarToShell();
   }
   
   function getProfileOverride(search=window.location.search){
@@ -407,6 +422,8 @@
   });
   
   window.addEventListener('blur',()=>{down.clear();deactivateBrake()});
+  window.addEventListener('resize',fitLightbarToShell);
+  window.addEventListener('orientationchange',fitLightbarToShell);
   
   // Touch/Mobile Controls
   const setupTouchControls=()=>{
