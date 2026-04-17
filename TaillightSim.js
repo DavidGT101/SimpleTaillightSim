@@ -14,6 +14,7 @@
     BRAKE_FLASH_DELAY_MS:500, // Keep brake solid for first 500ms, then flash
     BRAKE_FLASH_ON_MS:90,
     BRAKE_FLASH_OFF_MS:90,
+    PRESENCE_PING_MS:10000,
     REVERSE_HOLD_MS:250, // Hold duration for reverse toggle
     REVERSE_TEST_TAP_COUNT:5, // Quick taps on Reverse to trigger tests on mobile
     REVERSE_TEST_WINDOW_MS:2200, // Time window to collect reverse taps for test trigger
@@ -27,6 +28,9 @@
   const segCountInput=$('#segCount'),segCountDisplay=$('#segCountDisplay');
   const MOBILE_DEFAULT_SEGMENTS=20;
   const PROFILE_CLASSES=['profile-mobile','profile-desktop'];
+  const PRESENCE_HEARTBEAT_PATH='/__control/heartbeat';
+  const PRESENCE_DISCONNECT_PATH='/__control/disconnect';
+  const PRESENCE_STORAGE_KEY='taillightsim-device-id';
   
   // Dynamic segment management
   let segs=[],left=[],right=[],mid=0;
@@ -44,6 +48,53 @@
   let brakeFlashCycleTimer=null;
   let brakeFlashVisible=false;
   let brakeActivatedAt=0;
+  let presencePingTimer=null;
+  const presenceDeviceId=(()=>{
+    try{
+      const stored=localStorage.getItem(PRESENCE_STORAGE_KEY);
+      if(stored)return stored;
+      const generated=`dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
+      localStorage.setItem(PRESENCE_STORAGE_KEY,generated);
+      return generated;
+    }catch(_err){
+      return `dev-${Date.now().toString(36)}-anon`;
+    }
+  })();
+
+  function buildPresencePayload(){
+    return JSON.stringify({
+      deviceId:presenceDeviceId,
+      pageVisible:document.visibilityState==='visible',
+      page:'TaillightSim',
+      mode:MODES[state.modeIdx],
+      signal:state.signal,
+      powerOn:state.on,
+      ts:Date.now(),
+    });
+  }
+
+  function postPresence(path,useBeacon=false){
+    const payload=buildPresencePayload();
+    if(useBeacon&&navigator.sendBeacon){
+      try{
+        const blob=new Blob([payload],{type:'application/json'});
+        navigator.sendBeacon(path,blob);
+        return;
+      }catch(_err){
+        // Fall through to fetch if beacon fails.
+      }
+    }
+    fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:payload,keepalive:useBeacon,cache:'no-store'}).catch(()=>{});
+  }
+
+  function startPresenceReporting(){
+    postPresence(PRESENCE_HEARTBEAT_PATH);
+    if(presencePingTimer)clearInterval(presencePingTimer);
+    presencePingTimer=setInterval(()=>postPresence(PRESENCE_HEARTBEAT_PATH),CFG.PRESENCE_PING_MS);
+    document.addEventListener('visibilitychange',()=>postPresence(PRESENCE_HEARTBEAT_PATH));
+    window.addEventListener('pagehide',()=>postPresence(PRESENCE_DISCONNECT_PATH,true));
+    window.addEventListener('beforeunload',()=>postPresence(PRESENCE_DISCONNECT_PATH,true));
+  }
 
   function setBrakeVisual(isOn){
     brakeFlashVisible=isOn;
@@ -603,4 +654,5 @@
   
   setModeLabel();
   setupTouchControls();
+  startPresenceReporting();
 })();
