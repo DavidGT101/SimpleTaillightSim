@@ -19,6 +19,7 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui
 
 /* Brake Light - Bright red override */
 .brake{background:#ff0000;border-color:#ff6666;box-shadow:0 0 8px #ff0000,0 0 20px #ff0000,0 0 35px #ff0000;opacity:1}
+.ebrake-off{background:var(--seg-off)!important;border-color:var(--seg-off-br)!important;box-shadow:none!important;opacity:1!important}
 
 /* Reverse Light - White center segments */
 .reverse{background:#ffffff;border-color:#e0e0e0;box-shadow:0 0 8px #ffffff,0 0 20px #ffffff,0 0 35px #ffffff;opacity:1}

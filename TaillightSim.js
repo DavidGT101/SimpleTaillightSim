@@ -7,6 +7,13 @@
     MAZDA_HOLD_ON:150,MAZDA_FADE:300,MAZDA_HOLD_OFF:350,
     HAZ_ON:150,HAZ_OFF:150,
     BLINK_ON:350, BLINK_OFF:350, // Timing for Normal/USDM/Halogen
+    USDM_HOLD_ON_MS:280,
+    USDM_HOLD_OFF_MS:180,
+    USDM_SEQ_SWEEP_MS:300,
+    USDM_FADE_MS:140,
+    BRAKE_FLASH_DELAY_MS:500, // Keep brake solid for first 500ms, then flash
+    BRAKE_FLASH_ON_MS:90,
+    BRAKE_FLASH_OFF_MS:90,
     REVERSE_HOLD_MS:250, // Hold duration for reverse toggle
     REVERSE_TEST_TAP_COUNT:5, // Quick taps on Reverse to trigger tests on mobile
     REVERSE_TEST_WINDOW_MS:2200, // Time window to collect reverse taps for test trigger
@@ -33,6 +40,46 @@
   let reverseTestTapCount=0;
   let reverseTestTapTimer=null;
   let selfTestsRunning=false;
+  let brakeFlashDelayTimer=null;
+  let brakeFlashCycleTimer=null;
+  let brakeFlashVisible=false;
+  let brakeActivatedAt=0;
+
+  function setBrakeVisual(isOn){
+    brakeFlashVisible=isOn;
+    for(let i=0;i<segs.length;i++){
+      segs[i].classList.toggle('brake',isOn);
+      segs[i].classList.toggle('ebrake-off',!isOn);
+    }
+  }
+
+  function clearBrakeVisual(){
+    brakeFlashVisible=false;
+    for(let i=0;i<segs.length;i++){
+      segs[i].classList.remove('brake');
+      segs[i].classList.remove('ebrake-off');
+    }
+  }
+
+  function clearBrakeFlashTimers(){
+    if(brakeFlashDelayTimer){
+      clearTimeout(brakeFlashDelayTimer);
+      brakeFlashDelayTimer=null;
+    }
+    if(brakeFlashCycleTimer){
+      clearTimeout(brakeFlashCycleTimer);
+      brakeFlashCycleTimer=null;
+    }
+  }
+
+  function scheduleBrakeFlashPhase(nextOn,delayMs){
+    brakeFlashCycleTimer=setTimeout(()=>{
+      if(!state.brakeActive)return;
+      setBrakeVisual(nextOn);
+      const nextDelay=nextOn?CFG.BRAKE_FLASH_ON_MS:CFG.BRAKE_FLASH_OFF_MS;
+      scheduleBrakeFlashPhase(!nextOn,nextDelay);
+    },delayMs);
+  }
 
   function fitLightbarToShell(){
     if(!barShell||!bar)return;
@@ -66,6 +113,7 @@
     right=segs.slice(mid+q);
     if(state.on)segs.forEach(s=>s.classList.add('on'));
     updateReverseLights();
+    if(state.brakeActive)setBrakeVisual(brakeFlashVisible);
     fitLightbarToShell();
   }
   
@@ -124,28 +172,46 @@
       if(keepRed)s.classList.add('on')
     });
     clearSigIcons();
-    updateReverseLights()
+    updateReverseLights();
+    if(state.brakeActive)setBrakeVisual(brakeFlashVisible)
   }
   function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
   const tick=()=>sleep(CFG.RAF_MS);
   const active=(token,dir)=>state.animToken===token&&state.signal===dir;
   function iconsApply(icons,cls,add,token){if(token!==state.iconToken)return;icons.forEach(ic=>ic.classList[add?'add':'remove'](cls))}
   
-  // Brake light functions
+  // Emergency brake functions
   function activateBrake(){
     if(state.brakeActive)return;
     state.brakeActive=true;
-    segs.forEach(s=>s.classList.add('brake'));
+    brakeActivatedAt=performance.now();
+    clearBrakeFlashTimers();
+    setBrakeVisual(true);
     statusBrake.classList.add('active','brake');
     if(btnCache.brake)btnCache.brake.classList.add('brake-active');
+    brakeFlashDelayTimer=setTimeout(()=>{
+      brakeFlashDelayTimer=null;
+      if(!state.brakeActive)return;
+      setBrakeVisual(false);
+      scheduleBrakeFlashPhase(true,CFG.BRAKE_FLASH_OFF_MS);
+    },CFG.BRAKE_FLASH_DELAY_MS);
   }
   
   function deactivateBrake(){
     if(!state.brakeActive)return;
     state.brakeActive=false;
-    segs.forEach(s=>s.classList.remove('brake'));
+    brakeActivatedAt=0;
+    clearBrakeFlashTimers();
+    clearBrakeVisual();
     statusBrake.classList.remove('active','brake');
     if(btnCache.brake)btnCache.brake.classList.remove('brake-active');
+  }
+
+  function releaseBrakeToHazard(){
+    const holdCompleted=state.brakeActive&&(performance.now()-brakeActivatedAt)>=CFG.BRAKE_FLASH_DELAY_MS;
+    deactivateBrake();
+    if(!holdCompleted||state.sysBusy)return;
+    if(state.signal!=='hazard')activate('hazard');
   }
   
   // Reverse light functions
@@ -288,6 +354,46 @@
     })()
   }
 
+  function runUSDMSequential(primary=[],mirror=[],dir,token){
+    primary=normalizeArr(primary);
+    mirror=normalizeArr(mirror);
+    const all=[...primary,...mirror];
+    const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];
+    const itok=state.iconToken;
+    const seqLen=Math.max(1,Math.max(primary.length,mirror.length));
+    const seqStepMs=Math.max(12,Math.min(60,Math.round(CFG.USDM_SEQ_SWEEP_MS/seqLen)));
+    all.forEach(s=>{
+      s.style.transitionDuration=`${CFG.USDM_FADE_MS}ms`;
+      s.style.transitionTimingFunction='ease-in-out';
+    });
+    (async()=>{
+      while(active(token,dir)){
+        all.forEach(s=>s.classList.add('usdm'));
+        iconsApply(sigIcos,'on',true,itok);
+        await sleep(CFG.USDM_HOLD_ON_MS);
+        iconsApply(sigIcos,'on',false,itok);
+        for(let i=0;i<seqLen;i++){
+          if(!active(token,dir))break;
+          if(primary[i])primary[i].classList.remove('usdm');
+          if(mirror[i])mirror[i].classList.remove('usdm');
+          await sleep(seqStepMs);
+        }
+        if(!active(token,dir))break;
+        await sleep(CFG.USDM_HOLD_OFF_MS);
+      }
+      if(state.signal==='none'){
+        all.forEach(s=>{
+          s.className='seg';
+          s.style.transition='';
+          s.style.transitionDuration='';
+          s.style.transitionTimingFunction='';
+        });
+        clearSigIcons();
+        restoreRedDelayed(all);
+      }
+    })();
+  }
+
   function runHalogen(primary=[],mirror=[],dir,token){
     primary=normalizeArr(primary); mirror=normalizeArr(mirror);
     const all=[...primary,...mirror];
@@ -336,7 +442,7 @@
       else if(mode==='BMW') runBMW(...groups,dir,token);
       else if(mode==='Mazda') runMazda(...groups,dir,token);
       else if(mode==='Normal') runSimpleBlink(...groups,dir,token, 'Normal');
-      else if(mode==='USDM') runSimpleBlink(...groups,dir,token, 'USDM');
+        else if(mode==='USDM') runUSDMSequential(...groups,dir,token);
       else if(mode==='Halogen') runHalogen(...groups,dir,token);
   }
 
@@ -412,7 +518,7 @@
   document.addEventListener('keyup',e=>{
     const k=e.key.toLowerCase();
     down.delete(k);
-    if(k==='s')deactivateBrake();
+    if(k==='s')releaseBrakeToHazard();
     else if(k==='q'){
       if(qHoldTimer){clearTimeout(qHoldTimer);qHoldTimer=null}
     }
@@ -442,7 +548,7 @@
     if(btnCache.mode)btnCache.mode.addEventListener('click',()=>changeMode());
     
     if(btnCache.brake){
-      const stopBrake=()=>deactivateBrake();
+      const stopBrake=()=>releaseBrakeToHazard();
       btnCache.brake.addEventListener('pointerdown',e=>{e.preventDefault();activateBrake()});
       btnCache.brake.addEventListener('pointerup',stopBrake);
       btnCache.brake.addEventListener('pointercancel',stopBrake);
