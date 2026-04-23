@@ -18,12 +18,15 @@
     REVERSE_HOLD_MS:250, // Hold duration for reverse toggle
     REVERSE_TEST_TAP_COUNT:5, // Quick taps on Reverse to trigger tests on mobile
     REVERSE_TEST_WINDOW_MS:2200, // Time window to collect reverse taps for test trigger
-    TEST_RELOAD_DELAY_MS:2000 // Pause after all tests pass before page reload
+    TEST_RELOAD_DELAY_MS:2000, // Pause after all tests pass before page reload
+    HAPTIC_TAP_MS:18,
+    HAPTIC_FLASH_MS:26,
+    HAPTIC_SIGNAL_ON_MS:18,
+    HAPTIC_BRAKE_ON_MS:20
   };
   const $=(q,el=document)=>el.querySelector(q);
   const bar=$('#bar'),barShell=$('.bar-shell'),modeName=$('#modeName'),panel=$('#panel');
-  const icoL=$('#ico-left'),icoR=$('#ico-right'),icoH=$('#ico-haz');
-  const testsBox=$('#tests'),testList=$('#testList');
+  const testsBox=$('#tests'),testList=$('#testList'),testSummary=$('#testSummary');
   const statusBrake=$('#statusBrake'),statusReverse=$('#statusReverse');
   const segCountInput=$('#segCount'),segCountDisplay=$('#segCountDisplay');
   const MOBILE_DEFAULT_SEGMENTS=20;
@@ -126,6 +129,7 @@
   function scheduleBrakeFlashPhase(nextOn,delayMs){
     brakeFlashCycleTimer=setTimeout(()=>{
       if(!state.brakeActive)return;
+      if(nextOn)triggerHaptic(CFG.HAPTIC_BRAKE_ON_MS);
       setBrakeVisual(nextOn);
       const nextDelay=nextOn?CFG.BRAKE_FLASH_ON_MS:CFG.BRAKE_FLASH_OFF_MS;
       scheduleBrakeFlashPhase(!nextOn,nextDelay);
@@ -201,18 +205,68 @@
     return isMobileView?MOBILE_DEFAULT_SEGMENTS:fallback;
   }
 
+  function isMobileInteractionProfile(options={}){
+    const profileOverride=options.profileOverride??getProfileOverride();
+    if(profileOverride==='mobile')return true;
+    if(profileOverride==='desktop')return false;
+    const ua=options.userAgent??(navigator.userAgent||'');
+    const uaMobile=/android|iphone|ipad|ipod|mobile/i.test(ua);
+    const narrowViewport=options.narrowViewport??window.matchMedia('(max-width: 768px)').matches;
+    const coarsePointer=options.coarsePointer??window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+    const hasTouch=options.hasTouch??('ontouchstart' in window||navigator.maxTouchPoints>0);
+    return uaMobile||narrowViewport||coarsePointer||hasTouch;
+  }
+
   // Initialize based on viewport context (mobile defaults to fewer segments)
   const activeProfileOverride=getProfileOverride();
   applyProfileClass(activeProfileOverride);
   const initialSegments=getInitialSegmentCount({profileOverride:activeProfileOverride});
+  const canVibrate=typeof navigator.vibrate==='function';
   if(segCountInput)segCountInput.value=String(initialSegments);
   if(segCountDisplay)segCountDisplay.textContent=String(initialSegments);
   generateSegments(initialSegments);
+
+  function triggerHaptic(pattern=CFG.HAPTIC_TAP_MS){
+    if(!canVibrate)return false;
+    try{
+      return navigator.vibrate(pattern)!==false;
+    }catch(_err){
+      return false;
+    }
+  }
+
+  function triggerLockUnlockFlashHaptics(cycles){
+    if(cycles<=0)return;
+    if(cycles===1){
+      triggerHaptic(CFG.HAPTIC_FLASH_MS);
+      return;
+    }
+    const pattern=[];
+    const interFlashPause=Math.max(0,CFG.HAZ_ON+CFG.HAZ_OFF-CFG.HAPTIC_FLASH_MS);
+    for(let i=0;i<cycles;i++){
+      pattern.push(CFG.HAPTIC_FLASH_MS);
+      if(i<cycles-1)pattern.push(interFlashPause);
+    }
+    triggerHaptic(pattern);
+  }
+
+  function triggerSignalOnHaptic(){
+    triggerHaptic(CFG.HAPTIC_SIGNAL_ON_MS);
+  }
   
   const MODES=['Audi','BMW','Mazda','Normal','USDM','Halogen'];
   
   const setModeLabel=()=>modeName.textContent=MODES[state.modeIdx].toUpperCase();
-  function clearSigIcons(){icoL.className='ico';icoR.className='ico';icoH.className='ico hazard'}
+  function getSignalButtons(dir){
+    if(dir==='hazard')return [btnCache.left,btnCache.right,btnCache.hazard].filter(Boolean);
+    if(dir==='left')return [btnCache.left].filter(Boolean);
+    if(dir==='right')return [btnCache.right].filter(Boolean);
+    return [];
+  }
+  function clearSigIcons(){
+    const buttons=getSignalButtons('hazard');
+    buttons.forEach(btn=>btn.classList.remove('on','dim'));
+  }
   function clsAll(keepRed){
     if(restoreTimeout){clearTimeout(restoreTimeout);restoreTimeout=null}
     segs.forEach(s=>{
@@ -229,7 +283,7 @@
   function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
   const tick=()=>sleep(CFG.RAF_MS);
   const active=(token,dir)=>state.animToken===token&&state.signal===dir;
-  function iconsApply(icons,cls,add,token){if(token!==state.iconToken)return;icons.forEach(ic=>ic.classList[add?'add':'remove'](cls))}
+  function iconsApply(icons,cls,add,token){if(token!==state.iconToken)return;icons.forEach(ic=>ic&&ic.classList[add?'add':'remove'](cls))}
   
   // Emergency brake functions
   function activateBrake(){
@@ -237,6 +291,7 @@
     state.brakeActive=true;
     brakeActivatedAt=performance.now();
     clearBrakeFlashTimers();
+    triggerHaptic(CFG.HAPTIC_BRAKE_ON_MS);
     setBrakeVisual(true);
     statusBrake.classList.add('active','brake');
     if(btnCache.brake)btnCache.brake.classList.add('brake-active');
@@ -287,7 +342,7 @@
   }
   
   async function systemSequence(kind){state.sysBusy=true;clsAll(kind==='goodbye');const half=mid;for(let i=0;i<half;i++){segs[i]?.classList.add('dim');segs[CFG.COUNT-1-i]?.classList.add('dim');await tick()}await sleep(CFG.SEQ_PAUSE);if(kind==='welcome'){for(let i=0;i<half;i++){segs[mid-1-i]?.classList.replace('dim','on');segs[mid+i]?.classList.replace('dim','on');await tick()}}else{for(let i=0;i<half;i++){segs[mid-1-i]?.classList.replace('on','dim');segs[mid+i]?.classList.replace('on','dim');await tick()}await sleep(CFG.SEQ_PAUSE);for(let i=0;i<half;i++){segs[i]?.classList.remove('dim');segs[CFG.COUNT-1-i]?.classList.remove('dim');await tick()}}state.sysBusy=false;updateReverseLights()}
-  async function hazardFlash(cycles,keepBase){state.sysBusy=true;const all=[...left,...right];if(!keepBase)all.forEach(s=>s.classList.remove('on'));for(let c=0;c<cycles;c++){all.forEach(s=>s.classList.add('ind'));const itok=state.iconToken;iconsApply([icoL,icoR,icoH],'on',true,itok);await sleep(CFG.HAZ_ON);all.forEach(s=>s.classList.remove('ind'));iconsApply([icoL,icoR,icoH],'on',false,itok);await sleep(CFG.HAZ_OFF)}state.sysBusy=false;updateReverseLights()}
+  async function hazardFlash(cycles,keepBase,hapticOnFlash=false){state.sysBusy=true;const all=[...left,...right];const sigButtons=getSignalButtons('hazard');if(!keepBase)all.forEach(s=>s.classList.remove('on'));for(let c=0;c<cycles;c++){if(hapticOnFlash)triggerHaptic(CFG.HAPTIC_FLASH_MS);all.forEach(s=>s.classList.add('ind'));const itok=state.iconToken;iconsApply(sigButtons,'on',true,itok);await sleep(CFG.HAZ_ON);all.forEach(s=>s.classList.remove('ind'));iconsApply(sigButtons,'on',false,itok);await sleep(CFG.HAZ_OFF)}state.sysBusy=false;updateReverseLights()}
   function restoreRedDelayed(group){if(!state.on)return;if(restoreTimeout)clearTimeout(restoreTimeout);restoreTimeout=setTimeout(()=>{restoreTimeout=null;group.forEach(s=>{s.classList.add('on');s.style.transitionDuration='.4s'});setTimeout(()=>{group.forEach(s=>s.style.transitionDuration='');updateReverseLights()},420)},CFG.RETURN_TO_RED_DELAY)}
   function normalizeArr(v){return Array.isArray(v)?v:[]}
 
@@ -295,12 +350,13 @@
     primary=normalizeArr(primary);
     mirror=normalizeArr(mirror);
     const all=[...primary,...mirror];
-    const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];
+    const sigIcos=getSignalButtons(dir);
     const itok=state.iconToken;
     (async()=>{
       while(active(token,dir)){
         await sleep(CFG.AUDI_HOLD_OFF);
         if(!active(token,dir))break;
+        triggerSignalOnHaptic();
         iconsApply(sigIcos,'on',true,itok);
         for(let i=0;i<primary.length;i++){
           if(!active(token,dir))break;
@@ -329,12 +385,13 @@
     primary=normalizeArr(primary);
     mirror=normalizeArr(mirror);
     const all=[...primary,...mirror];
-    const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];
+    const sigIcos=getSignalButtons(dir);
     const itok=state.iconToken;
     (async()=>{
       while(active(token,dir)){
         await sleep(CFG.BMW_HOLD_OFF);
         if(!active(token,dir))break;
+        triggerSignalOnHaptic();
         all.forEach(s=>{s.style.transitionDuration='.35s';s.classList.add('ind')});
         iconsApply(sigIcos,'on',true,itok);
         await sleep(CFG.BMW_FADE_IN);
@@ -354,12 +411,13 @@
     primary=normalizeArr(primary);
     mirror=normalizeArr(mirror);
     const all=[...primary,...mirror];
-    const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];
+    const sigIcos=getSignalButtons(dir);
     const itok=state.iconToken;
     (async()=>{
       while(active(token,dir)){
         await sleep(CFG.MAZDA_HOLD_OFF);
         if(!active(token,dir))break;
+        triggerSignalOnHaptic();
         all.forEach(s=>{s.style.transitionDuration='0s';s.classList.add('ind');s.offsetHeight;s.style.transitionDuration='.3s'});
         iconsApply(sigIcos,'on',true,itok);
         await sleep(CFG.MAZDA_HOLD_ON);
@@ -383,7 +441,7 @@
   function runSimpleBlink(primary=[],mirror=[],dir,token,type){
     primary=normalizeArr(primary); mirror=normalizeArr(mirror);
     const all=[...primary,...mirror];
-    const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];
+    const sigIcos=getSignalButtons(dir);
     const itok=state.iconToken;
     const activeClass = type === 'USDM' ? 'usdm' : 'ind';
     all.forEach(s => s.style.transition = 'none');
@@ -393,6 +451,7 @@
             iconsApply(sigIcos,'on',false,itok);
             await sleep(CFG.BLINK_OFF);
             if(!active(token,dir)) break;
+            triggerSignalOnHaptic();
             all.forEach(s => s.classList.add(activeClass));
             iconsApply(sigIcos,'on',true,itok);
             await sleep(CFG.BLINK_ON);
@@ -409,7 +468,7 @@
     primary=normalizeArr(primary);
     mirror=normalizeArr(mirror);
     const all=[...primary,...mirror];
-    const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];
+    const sigIcos=getSignalButtons(dir);
     const itok=state.iconToken;
     const seqLen=Math.max(1,Math.max(primary.length,mirror.length));
     const seqStepMs=Math.max(12,Math.min(60,Math.round(CFG.USDM_SEQ_SWEEP_MS/seqLen)));
@@ -419,6 +478,7 @@
     });
     (async()=>{
       while(active(token,dir)){
+        triggerSignalOnHaptic();
         all.forEach(s=>s.classList.add('usdm'));
         iconsApply(sigIcos,'on',true,itok);
         await sleep(CFG.USDM_HOLD_ON_MS);
@@ -448,7 +508,7 @@
   function runHalogen(primary=[],mirror=[],dir,token){
     primary=normalizeArr(primary); mirror=normalizeArr(mirror);
     const all=[...primary,...mirror];
-    const sigIcos=dir==='hazard'?[icoL,icoR,icoH]:dir==='left'?[icoL]:[icoR];
+    const sigIcos=getSignalButtons(dir);
     const itok=state.iconToken;
     (async()=>{
         while(active(token,dir)){
@@ -460,6 +520,7 @@
             iconsApply(sigIcos,'on',false,itok);
             await sleep(CFG.BLINK_OFF);
             if(!active(token,dir)) break;
+            triggerSignalOnHaptic();
             all.forEach(s => {
                 s.style.transitionDuration = '0.12s';
                 s.style.transitionTimingFunction = 'ease-out';
@@ -497,7 +558,7 @@
       else if(mode==='Halogen') runHalogen(...groups,dir,token);
   }
 
-  async function lockUnlock(){if(state.sysBusy)return;if(restoreTimeout){clearTimeout(restoreTimeout);restoreTimeout=null}if(!state.on){state.on=true;await hazardFlash(2,false);await sleep(CFG.WELCOME_DELAY);await systemSequence('welcome')}else{state.on=false;await hazardFlash(1,true);await sleep(CFG.GOODBYE_DELAY);await systemSequence('goodbye')}}
+  async function lockUnlock(){if(state.sysBusy)return;if(restoreTimeout){clearTimeout(restoreTimeout);restoreTimeout=null}if(!state.on){state.on=true;triggerLockUnlockFlashHaptics(2);await hazardFlash(2,false,false);await sleep(CFG.WELCOME_DELAY);await systemSequence('welcome')}else{state.on=false;triggerLockUnlockFlashHaptics(1);await hazardFlash(1,true,false);await sleep(CFG.GOODBYE_DELAY);await systemSequence('goodbye')}}
   function changeMode(){clsAll(state.on);state.modeIdx=(state.modeIdx+1)%MODES.length;setModeLabel()}
   function toggleUI(){panel.style.display=panel.style.display==='none'?'':'none'}
   function resetReverseTestTapSequence(){reverseTestTapCount=0;if(reverseTestTapTimer){clearTimeout(reverseTestTapTimer);reverseTestTapTimer=null}}
@@ -591,8 +652,26 @@
     btnCache.brake=$('#btnBrake');
     btnCache.reverse=$('#btnReverse');
     btnCache.mode=$('#btnMode');
+
+    const wirePressHaptic=button=>{
+      if(!button)return;
+      let lastHapticAt=0;
+      const fireHaptic=()=>{
+        const now=performance.now();
+        if(now-lastHapticAt<120)return;
+        lastHapticAt=now;
+        triggerHaptic(CFG.HAPTIC_TAP_MS);
+      };
+      button.addEventListener('pointerdown',fireHaptic);
+      button.addEventListener('touchstart',fireHaptic,{passive:true});
+      button.addEventListener('mousedown',fireHaptic);
+    };
     
     if(btnCache.lock)btnCache.lock.addEventListener('click',()=>lockUnlock());
+    wirePressHaptic(btnCache.left);
+    wirePressHaptic(btnCache.hazard);
+    wirePressHaptic(btnCache.right);
+    wirePressHaptic(btnCache.mode);
     if(btnCache.left)btnCache.left.addEventListener('click',()=>activate('left'));
     if(btnCache.hazard)btnCache.hazard.addEventListener('click',()=>activate('hazard'));
     if(btnCache.right)btnCache.right.addEventListener('click',()=>activate('right'));
@@ -600,7 +679,7 @@
     
     if(btnCache.brake){
       const stopBrake=()=>releaseBrakeToHazard();
-      btnCache.brake.addEventListener('pointerdown',e=>{e.preventDefault();activateBrake()});
+      btnCache.brake.addEventListener('pointerdown',e=>{e.preventDefault();triggerHaptic(CFG.HAPTIC_TAP_MS);activateBrake()});
       btnCache.brake.addEventListener('pointerup',stopBrake);
       btnCache.brake.addEventListener('pointercancel',stopBrake);
       btnCache.brake.addEventListener('pointerleave',stopBrake);
@@ -618,6 +697,7 @@
       };
       btnCache.reverse.addEventListener('pointerdown',e=>{
         e.preventDefault();
+        triggerHaptic(CFG.HAPTIC_TAP_MS);
         reverseHoldTriggered=false;
         clearReverseTimer();
         reverseTimer=setTimeout(()=>{reverseHoldTriggered=true;resetReverseTestTapSequence();toggleReverse();reverseTimer=null},CFG.REVERSE_HOLD_MS);
@@ -630,11 +710,14 @@
   
   // Self-tests
   function addResult(name,ok,err){const li=document.createElement('li');li.textContent=(ok?'PASS: ':'FAIL: ')+name+(ok?'':(err?' — '+(err.message?err.message:err):''));li.className=ok?'ok':'fail';testList.appendChild(li);testResults.push({name,ok,error:ok?null:(err&&err.message?err.message:String(err||''))})}
-  function setSummary(total,passed,ms){const s=document.getElementById('testSummary');s.textContent=passed+'/'+total+' passed in '+Math.round(ms)+' ms'}
+  function setSummary(total,passed,ms){if(testSummary)testSummary.textContent=passed+'/'+total+' passed in '+Math.round(ms)+' ms'}
   function segClassCount(cls){let n=0;const len=segs.length;for(let i=0;i<len;i++)if(segs[i].classList.contains(cls))n++;return n}
   function groupHasClass(group,cls){for(let i=0;i<group.length;i++)if(group[i].classList.contains(cls))return true;return false}
   function stopSignalIfActive(){if(state.signal==='left')activate('left');else if(state.signal==='right')activate('right');else if(state.signal==='hazard')activate('hazard')}
-  function iconsAreClear(){return icoL.className==='ico'&&icoR.className==='ico'&&icoH.className==='ico hazard'}
+  function iconsAreClear(){
+    const buttons=getSignalButtons('hazard');
+    return buttons.every(btn=>!btn.classList.contains('on')&&!btn.classList.contains('dim'));
+  }
   function dispatchKey(type,key){document.dispatchEvent(new KeyboardEvent(type,{key,bubbles:true}))}
   const testResults=[];
   async function runSelfTests(){testResults.length=0;testList.textContent='';const t0=performance.now();
