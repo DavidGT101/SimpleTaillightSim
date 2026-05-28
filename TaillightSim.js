@@ -595,6 +595,23 @@
       triggerSelfTests();
     }
   }
+
+  window.__taillightSim={
+    snapshot:()=>({
+      mode:MODES[state.modeIdx],
+      on:state.on,
+      signal:state.signal,
+      busy:state.sysBusy,
+      brakeActive:state.brakeActive,
+      reverseActive:state.reverseActive,
+      panelVisible:panel.style.display!=='none',
+      segmentCount:segs.length,
+      litCount:segs.reduce((count,seg)=>count+(seg.classList.contains('on')?1:0),0),
+      hazardIconOn:!!$('#ico-haz')?.classList.contains('on'),
+      leftIconOn:!!$('#ico-left')?.classList.contains('on'),
+      rightIconOn:!!$('#ico-right')?.classList.contains('on'),
+    })
+  };
   
   // Segment count control
   segCountInput.addEventListener('input',e=>{

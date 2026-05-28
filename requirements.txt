@@ -1,2 +1,3 @@
 debugpy>=1.8.1
 agent-dev-cli
+selenium>=4.22.0
