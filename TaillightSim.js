@@ -87,7 +87,17 @@
         // Fall through to fetch if beacon fails.
       }
     }
-    fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:payload,keepalive:useBeacon,cache:'no-store'}).catch(()=>{});
+    fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:payload,keepalive:useBeacon,cache:'no-store'})
+      .then(response => {
+        if (!response.ok) {
+          console.error('Presence reporting failed with status: ' + response.status);
+          return;
+        }
+        return Promise.resolve();
+      })
+  .catch(error => {
+    console.error("Network error during presence reporting:", error);
+  });
   }
 
   function startPresenceReporting(){
