@@ -22,6 +22,7 @@ CONTROL_RESTART_PATH = "/__control/restart"
 CONTROL_HEARTBEAT_PATH = "/__control/heartbeat"
 CONTROL_DISCONNECT_PATH = "/__control/disconnect"
 ACTIVE_WINDOW_SECONDS = 20.0
+STATUS_SORT_ORDER = {"active": 0, "idle": 1, "offline": 2}
 
 
 def clear_runtime_cache() -> dict[str, int]:
@@ -81,7 +82,7 @@ class TaillightHTTPServer(ThreadingHTTPServer):
         now = time.time()
         normalized_id = self._normalize_client_id(client_id, ip)
         with self._clients_lock:
-            entry = self._clients.get(normalized_id, {})
+            entry = self._clients.setdefault(normalized_id, {})
             entry["client_id"] = normalized_id
             entry["ip"] = ip
             entry["connected"] = True
@@ -97,48 +98,50 @@ class TaillightHTTPServer(ThreadingHTTPServer):
         now = time.time()
         normalized_id = self._normalize_client_id(client_id, ip)
         with self._clients_lock:
-            entry = self._clients.get(normalized_id, {})
+            entry = self._clients.setdefault(normalized_id, {})
             entry["client_id"] = normalized_id
             entry["ip"] = ip
             entry["connected"] = False
             entry["last_seen"] = now
             entry["page_visible"] = False
             entry["user_agent"] = user_agent[:140]
-            self._clients[normalized_id] = entry
 
     def get_client_snapshot(self) -> list[dict[str, object]]:
         now = time.time()
         rows: list[dict[str, object]] = []
         stale_keys: list[str] = []
         with self._clients_lock:
-            for client_id, entry in self._clients.items():
-                last_seen = float(entry.get("last_seen", 0.0))
-                age_seconds = max(0.0, now - last_seen)
-                connected = bool(entry.get("connected", False))
-                if not connected and age_seconds > 3600:
-                    stale_keys.append(client_id)
-                    continue
-                if connected and age_seconds <= ACTIVE_WINDOW_SECONDS:
-                    status = "active"
-                elif connected:
-                    status = "idle"
-                else:
-                    status = "offline"
-                page_visible = entry.get("page_visible")
-                page_state = "visible" if page_visible is True else "hidden" if page_visible is False else "unknown"
-                rows.append(
-                    {
-                        "client_id": str(entry.get("client_id", client_id)),
-                        "ip": str(entry.get("ip", "?")),
-                        "status": status,
-                        "page": page_state,
-                        "age_seconds": age_seconds,
-                        "user_agent": str(entry.get("user_agent", "")),
-                    }
-                )
-            for key in stale_keys:
-                self._clients.pop(key, None)
-        rows.sort(key=lambda row: ({"active": 0, "idle": 1, "offline": 2}.get(str(row["status"]), 3), str(row["ip"]), str(row["client_id"])))
+            items = list(self._clients.items())
+        for client_id, entry in items:
+            last_seen = float(entry.get("last_seen", 0.0))
+            age_seconds = max(0.0, now - last_seen)
+            connected = bool(entry.get("connected", False))
+            if not connected and age_seconds > 3600:
+                stale_keys.append(client_id)
+                continue
+            if connected and age_seconds <= ACTIVE_WINDOW_SECONDS:
+                status = "active"
+            elif connected:
+                status = "idle"
+            else:
+                status = "offline"
+            page_visible = entry.get("page_visible")
+            page_state = "visible" if page_visible is True else "hidden" if page_visible is False else "unknown"
+            rows.append(
+                {
+                    "client_id": str(entry.get("client_id", client_id)),
+                    "ip": str(entry.get("ip", "?")),
+                    "status": status,
+                    "page": page_state,
+                    "age_seconds": age_seconds,
+                    "user_agent": str(entry.get("user_agent", "")),
+                }
+            )
+        if stale_keys:
+            with self._clients_lock:
+                for key in stale_keys:
+                    self._clients.pop(key, None)
+        rows.sort(key=lambda row: (STATUS_SORT_ORDER.get(str(row["status"]), 3), str(row["ip"]), str(row["client_id"])))
         return rows
 
 
@@ -330,14 +333,16 @@ class TaillightRequestHandler(SimpleHTTPRequestHandler):
         parsed = urlsplit(self.path)
         if parsed.path == CONTROL_HEARTBEAT_PATH:
             payload = self._read_json_body()
+            page_visible = payload.get("pageVisible")
+            page = payload.get("page")
             server = self.server
             if isinstance(server, TaillightHTTPServer):
                 server.note_client_heartbeat(
                     client_id=str(payload.get("deviceId", "")).strip() or None,
                     ip=self.client_address[0],
                     user_agent=self.headers.get("User-Agent", ""),
-                    page_visible=payload.get("pageVisible") if isinstance(payload.get("pageVisible"), bool) else None,
-                    page=str(payload.get("page", "taillight")) if payload.get("page") is not None else "taillight",
+                    page_visible=page_visible if isinstance(page_visible, bool) else None,
+                    page=str(page) if page is not None else "taillight",
                 )
             self._send_json({"ok": True, "tracked": True})
             return
