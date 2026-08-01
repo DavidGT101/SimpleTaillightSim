@@ -37,6 +37,7 @@
   
   // Dynamic segment management
   let segs=[],left=[],right=[],mid=0;
+  let reverseStart=0,reverseEnd=0;
   const state={modeIdx:0,on:false,signal:'none',animToken:0,iconToken:0,sysBusy:false,brakeActive:false,reverseActive:false};
   
   // Cache button references
@@ -112,8 +113,9 @@
   function setBrakeVisual(isOn){
     brakeFlashVisible=isOn;
     for(let i=0;i<segs.length;i++){
-      segs[i].classList.toggle('brake',isOn);
-      segs[i].classList.toggle('ebrake-off',!isOn);
+      const seg=segs[i];
+      seg.classList.toggle('brake',isOn);
+      seg.classList.toggle('ebrake-off',!isOn);
     }
   }
 
@@ -162,20 +164,24 @@
   
   // Generate segments dynamically
   function generateSegments(count){
-    bar.innerHTML='';
+    bar.replaceChildren();
     segs=[];
+    const fragment=document.createDocumentFragment();
     for(let i=0;i<count;i++){
       const d=document.createElement('div');
       d.className='seg';
       d.dataset.i=i;
-      bar.appendChild(d);
       segs.push(d);
+      fragment.appendChild(d);
     }
+    bar.appendChild(fragment);
     CFG.COUNT=count;
     mid=CFG.COUNT/2|0;
     const q=mid/2|0;
     left=segs.slice(0,mid-q).reverse();
     right=segs.slice(mid+q);
+    reverseStart=Math.floor(CFG.COUNT*0.4);
+    reverseEnd=Math.floor(CFG.COUNT*0.6);
     if(state.on)segs.forEach(s=>s.classList.add('on'));
     updateReverseLights();
     if(state.brakeActive)setBrakeVisual(brakeFlashVisible);
@@ -333,9 +339,7 @@
   // Reverse light functions
   function updateReverseLights(){
     if(!state.reverseActive)return;
-    const centerStart=Math.floor(CFG.COUNT*0.4);
-    const centerEnd=Math.floor(CFG.COUNT*0.6);
-    for(let i=centerStart;i<centerEnd;i++)segs[i]?.classList.add('reverse');
+    for(let i=reverseStart;i<reverseEnd;i++)segs[i]?.classList.add('reverse');
   }
   
   function toggleReverse(){
@@ -345,7 +349,7 @@
       statusReverse.classList.add('active','reverse');
       if(btnCache.reverse)btnCache.reverse.classList.add('reverse-active');
     }else{
-      for(let i=0;i<segs.length;i++)segs[i].classList.remove('reverse');
+      for(let i=reverseStart;i<reverseEnd;i++)segs[i]?.classList.remove('reverse');
       statusReverse.classList.remove('active','reverse');
       if(btnCache.reverse)btnCache.reverse.classList.remove('reverse-active');
     }
