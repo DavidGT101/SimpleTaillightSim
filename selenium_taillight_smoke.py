@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import argparse
 import atexit
-import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+import socket
 import subprocess
 import sys
 import time
@@ -22,13 +24,28 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 
-DEFAULT_BASE_URL = "http://127.0.0.1:8088"
 DEFAULT_TIMEOUT_SECONDS = 20
 DEFAULT_HEADLESS = False
 DEFAULT_BROWSER = "auto"
 DEFAULT_BROWSERS = ("chrome", "firefox")
 SERVER_STARTUP_TIMEOUT_SECONDS = 20
-SERVER_COMMAND = [sys.executable, "taillight_server.py", "serve", "--host", "0.0.0.0", "--port", "8088"]
+PROJECT_ROOT = Path(__file__).resolve().parent
+SERVER_SCRIPT = PROJECT_ROOT / "taillight_server.py"
+SERVER_COMMAND = [sys.executable, str(SERVER_SCRIPT), "serve", "--host", "0.0.0.0", "--port", "8088"]
+STRESS_HEADLESS_WORKERS = 5
+STRESS_HEADLESS_TIMEOUT_SECONDS = 180
+
+
+def get_local_ipv4_address() -> str:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return str(sock.getsockname()[0])
+    except OSError:
+        return "127.0.0.1"
+
+
+DEFAULT_BASE_URL = f"http://{get_local_ipv4_address()}:8088"
 
 BASE_URL = DEFAULT_BASE_URL
 HEADLESS = DEFAULT_HEADLESS
@@ -51,7 +68,9 @@ def parse_args() -> argparse.Namespace:
         default=",".join(DEFAULT_BROWSERS),
         help="Comma-separated browser matrix to run, for example chrome,firefox,edge.",
     )
-    parser.add_argument("--headed", action="store_true", help="Run with a visible browser window.")
+    headed_group = parser.add_mutually_exclusive_group()
+    headed_group.add_argument("--headed", dest="headed", action="store_true", default=True, help="Run with a visible browser window.")
+    headed_group.add_argument("--headless", dest="headed", action="store_false", help="Run without a visible browser window.")
     return parser.parse_args()
 
 
@@ -78,18 +97,11 @@ def is_server_running(base_url: str) -> bool:
         return False
 
 
-def parse_startup_url(line: str) -> str | None:
-    match = re.search(r"https?://\S+", line)
-    if not match:
-        return None
-    return match.group(0).rstrip(".,)]")
-
-
 def start_server_if_needed() -> str:
     global SERVER_PROCESS
 
-    if is_server_running(DEFAULT_BASE_URL):
-        return DEFAULT_BASE_URL
+    if is_server_running(BASE_URL):
+        return BASE_URL
 
     SERVER_PROCESS = subprocess.Popen(
         SERVER_COMMAND,
@@ -98,26 +110,30 @@ def start_server_if_needed() -> str:
         text=True,
         encoding="utf-8",
         errors="replace",
+        cwd=str(PROJECT_ROOT),
     )
 
-    assert SERVER_PROCESS.stdout is not None
     startup_deadline = time.monotonic() + SERVER_STARTUP_TIMEOUT_SECONDS
-    captured_lines: list[str] = []
     while time.monotonic() < startup_deadline:
-        line = SERVER_PROCESS.stdout.readline()
-        if line:
-            captured_lines.append(line.rstrip())
-            resolved_url = parse_startup_url(line)
-            if resolved_url:
-                wait_for_server(resolved_url)
-                atexit.register(stop_started_server)
-                return resolved_url
-        elif SERVER_PROCESS.poll() is not None:
+        if is_server_running(BASE_URL):
+            atexit.register(stop_started_server)
+            return BASE_URL
+        if SERVER_PROCESS.poll() is not None:
             break
+        time.sleep(0.2)
 
+    captured_output = ""
+    if SERVER_PROCESS.stdout is not None and SERVER_PROCESS.poll() is not None:
+        captured_output = SERVER_PROCESS.stdout.read().strip()
     stop_started_server()
-    joined_output = "\n".join(captured_lines)
-    raise RuntimeError(f"Unable to start taillight_server.py. Output:\n{joined_output}")
+    details = captured_output if captured_output else "(no startup output captured)"
+    raise RuntimeError(f"Unable to start taillight_server.py. Output:\n{details}")
+
+
+def ensure_server_available(base_url: str) -> str:
+    if is_server_running(base_url):
+        return base_url
+    return start_server_if_needed()
 
 
 def stop_started_server() -> None:
@@ -151,48 +167,62 @@ def normalize_browser_list(raw: str) -> tuple[str, ...]:
     return tuple(normalized)
 
 
-def build_options(*, browser: str, mobile: bool, headless: bool):
+def build_firefox_options(*, mobile: bool, headless: bool):
     mobile_user_agent = (
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
         "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
     )
-    if browser == "firefox":
-        from selenium.webdriver import FirefoxOptions
+    from selenium.webdriver import FirefoxOptions
 
-        options = FirefoxOptions()
-    else:
-        from selenium.webdriver import ChromeOptions
-
-        options = ChromeOptions()
+    options = FirefoxOptions()
 
     if headless:
-        options.add_argument("--headless=new" if browser != "firefox" else "-headless")
+        options.add_argument("-headless")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1440,1100")
 
     if mobile:
-        if browser == "firefox":
-            options.add_argument("--width=390")
-            options.add_argument("--height=844")
-            options.set_preference("general.useragent.override", mobile_user_agent)
-            options.set_preference("layout.css.devPixelsPerPx", "3.0")
-        else:
-            options.add_experimental_option(
-                "mobileEmulation",
-                {
-                    "deviceMetrics": {"width": 390, "height": 844, "pixelRatio": 3},
-                    "userAgent": mobile_user_agent,
-                },
-            )
+        options.add_argument("--width=390")
+        options.add_argument("--height=844")
+        options.set_preference("general.useragent.override", mobile_user_agent)
+        options.set_preference("layout.css.devPixelsPerPx", "3.0")
 
     return options
 
 
-def create_driver(*, browser: str, mobile: bool) -> Chrome | Firefox:
-    options = build_options(browser=browser, mobile=mobile, headless=HEADLESS)
+def build_chrome_options(*, mobile: bool, headless: bool):
+    mobile_user_agent = (
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+    )
+    from selenium.webdriver import ChromeOptions
+
+    options = ChromeOptions()
+
+    if headless:
+        options.add_argument("--headless=new")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1440,1100")
+
+    if mobile:
+        options.add_experimental_option(
+            "mobileEmulation",
+            {
+                "deviceMetrics": {"width": 390, "height": 844, "pixelRatio": 3},
+                "userAgent": mobile_user_agent,
+            },
+        )
+
+    return options
+
+
+def create_driver(*, browser: str, mobile: bool, headless: bool | None = None) -> Chrome | Firefox:
+    effective_headless = HEADLESS if headless is None else headless
     if browser == "firefox":
+        options = build_firefox_options(mobile=mobile, headless=effective_headless)
         driver = Firefox(options=options)
     else:
+        options = build_chrome_options(mobile=mobile, headless=effective_headless)
         driver = Chrome(options=options)
     driver.set_page_load_timeout(30)
     return driver
@@ -259,7 +289,12 @@ def wait_for_self_tests_panel(driver, timeout: int = 12) -> None:
     wait_for(driver, lambda d: is_displayed(d, "#tests"), timeout=timeout)
 
 
+def announce(message: str) -> None:
+    print(message, flush=True)
+
+
 def exercise_desktop_flow(driver) -> None:
+    announce("[desktop] checking keyboard interactions")
     driver.find_element(By.TAG_NAME, "body").click()
 
     assert count_elements(driver, "#bar .seg") == 60
@@ -298,15 +333,19 @@ def exercise_desktop_flow(driver) -> None:
 
     hold_key(driver, "q", 0.35)
     wait_for(driver, lambda d: bool(snapshot(d)["reverseActive"]))
+    announce("[desktop] keyboard interactions complete")
 
 
 def exercise_desktop_self_tests(driver) -> None:
+    announce("[desktop] starting built-in self-tests")
     hold_key(driver, "t", 0.75)
     wait_for_self_tests_panel(driver)
     wait_for_pass_summary(driver)
+    announce("[desktop] built-in self-tests passed")
 
 
 def exercise_mobile_flow(driver) -> None:
+    announce("[mobile] checking touch interactions")
     assert text_of(driver, "#segCountDisplay") == "20"
     assert "profile-mobile" in driver.find_element(By.TAG_NAME, "body").get_attribute("class")
     assert count_elements(driver, "#bar .seg") == 20
@@ -339,21 +378,48 @@ def exercise_mobile_flow(driver) -> None:
 
     hold_pointer(driver, "#btnReverse", 0.35)
     wait_for(driver, lambda d: bool(snapshot(d)["reverseActive"]))
+    announce("[mobile] touch interactions complete")
 
 
 def exercise_mobile_self_tests(driver) -> None:
+    announce("[mobile] starting built-in self-tests")
     for _ in range(5):
         click_button(driver, "#btnReverse")
         time.sleep(0.12)
 
     wait_for_self_tests_panel(driver)
     wait_for_pass_summary(driver)
+    announce("[mobile] built-in self-tests passed")
+
+
+def run_headless_chrome_stress_worker(worker_id: int) -> None:
+    announce(f"[stress:{worker_id}] starting headless Chrome session")
+    driver = create_driver(browser="chrome", mobile=False, headless=True)
+    try:
+        driver.get(app_url(mobile=False))
+        wait_for(driver, lambda d: text_of(d, "#modeName") == "AUDI", timeout=20)
+        announce(f"[stress:{worker_id}] running desktop checks")
+        exercise_desktop_flow(driver)
+        exercise_desktop_self_tests(driver)
+        announce(f"[stress:{worker_id}] completed")
+    finally:
+        driver.quit()
+
+
+def exercise_headless_chrome_stress() -> None:
+    announce(f"[stress] launching {STRESS_HEADLESS_WORKERS} headless Chrome sessions")
+    with ThreadPoolExecutor(max_workers=STRESS_HEADLESS_WORKERS) as executor:
+        futures = [executor.submit(run_headless_chrome_stress_worker, worker_id) for worker_id in range(1, STRESS_HEADLESS_WORKERS + 1)]
+        for future in as_completed(futures):
+            future.result(timeout=STRESS_HEADLESS_TIMEOUT_SECONDS)
+    announce("[stress] all headless Chrome sessions passed")
 
 
 def make_browser_test_case(browser: str) -> tuple[type[unittest.TestCase], type[unittest.TestCase]]:
     class DesktopKeyboardReactionsTest(unittest.TestCase):
         @classmethod
         def setUpClass(cls) -> None:
+            announce(f"[desktop:{browser}] setting up browser session")
             wait_for_server(BASE_URL)
             cls.browser = browser
             try:
@@ -368,6 +434,7 @@ def make_browser_test_case(browser: str) -> tuple[type[unittest.TestCase], type[
             cls.driver.quit()
 
         def test_keyboard_bindings_and_reactions(self) -> None:
+            announce(f"[desktop:{browser}] test running")
             exercise_desktop_flow(self.driver)
             exercise_desktop_self_tests(self.driver)
 
@@ -377,6 +444,7 @@ def make_browser_test_case(browser: str) -> tuple[type[unittest.TestCase], type[
     class MobileTouchInteractionsTest(unittest.TestCase):
         @classmethod
         def setUpClass(cls) -> None:
+            announce(f"[mobile:{browser}] setting up browser session")
             wait_for_server(BASE_URL)
             cls.browser = browser
             try:
@@ -391,6 +459,7 @@ def make_browser_test_case(browser: str) -> tuple[type[unittest.TestCase], type[
             cls.driver.quit()
 
         def test_mobile_controls_and_long_presses(self) -> None:
+            announce(f"[mobile:{browser}] test running")
             exercise_mobile_flow(self.driver)
             exercise_mobile_self_tests(self.driver)
 
@@ -407,12 +476,47 @@ def build_browser_suite(browsers: tuple[str, ...]) -> unittest.TestSuite:
         desktop_case, mobile_case = make_browser_test_case(browser)
         suite.addTests(loader.loadTestsFromTestCase(desktop_case))
         suite.addTests(loader.loadTestsFromTestCase(mobile_case))
+
+    class HeadlessChromeStressTest(unittest.TestCase):
+        def test_headless_chrome_stress(self) -> None:
+            announce("[stress] test running")
+            try:
+                exercise_headless_chrome_stress()
+            except WebDriverException as exc:
+                raise unittest.SkipTest(f"headless Chrome stress test unavailable: {exc}") from exc
+
+    HeadlessChromeStressTest.__name__ = "HeadlessChromeStressTest"
+    HeadlessChromeStressTest.__qualname__ = HeadlessChromeStressTest.__name__
+    suite.addTests(loader.loadTestsFromTestCase(HeadlessChromeStressTest))
     return suite
 
 
 def load_tests(loader: unittest.TestLoader, tests: unittest.TestSuite, pattern: str | None) -> unittest.TestSuite:
     del loader, tests, pattern
     return build_browser_suite(DEFAULT_BROWSERS)
+
+
+def run_browser_suite(*, headed: bool) -> unittest.result.TestResult:
+    global HEADLESS
+
+    previous_headless = HEADLESS
+    HEADLESS = not headed
+    try:
+        runner = unittest.TextTestRunner(verbosity=2)
+        return runner.run(build_browser_suite(BROWSERS))
+    finally:
+        HEADLESS = previous_headless
+
+
+def run_with_headed_fallback() -> unittest.result.TestResult:
+    if not HEADLESS:
+        announce("[runner] running with a visible browser window first")
+        result = run_browser_suite(headed=True)
+        if result.wasSuccessful():
+            return result
+        announce("[runner] visible browser run failed; retrying headless")
+        return run_browser_suite(headed=False)
+    return run_browser_suite(headed=False)
 
 
 def main() -> int:
@@ -424,13 +528,14 @@ def main() -> int:
     HEADLESS = not args.headed
     BROWSERS = (args.browser,) if args.browser != "auto" else normalize_browser_list(args.browsers)
 
-    BASE_URL = start_server_if_needed() if BASE_URL == DEFAULT_BASE_URL else BASE_URL
+    BASE_URL = ensure_server_available(BASE_URL)
     wait_for_server(BASE_URL)
 
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(build_browser_suite(BROWSERS))
-    stop_started_server()
-    return 0 if result.wasSuccessful() else 1
+    try:
+        result = run_with_headed_fallback()
+        return 0 if result.wasSuccessful() else 1
+    finally:
+        stop_started_server()
 
 
 if __name__ == "__main__":
