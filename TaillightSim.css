@@ -34,6 +34,10 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui
 .panel{background:var(--ui);padding:16px 18px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.35);width:720px;margin:0 auto;text-align:left}
 .mode{margin-top:0;font-size:14px}
 .mode b{color:var(--amber)}
+.sound-control{margin-top:10px;font-size:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.sound-control label{color:#cfcfcf}
+.sound-control select{flex:1;min-width:180px;background:#1a1a1a;color:var(--text);border:1px solid #444;border-radius:8px;padding:10px 12px;font:inherit}
+.sound-control select:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 2px rgba(255,153,0,.15)}
 .tests{display:none;margin-top:12px;padding-top:12px;border-top:1px solid #3a3a3a;font-size:13px;color:#cfcfcf}
 .tests ul{margin:8px 0 0;padding-left:18px}
 .ok{color:#78e08f}
@@ -79,6 +83,8 @@ body.profile-mobile .wrap{width:100%;padding:12px 8px calc(16px + env(safe-area-
 body.profile-mobile .panel{width:auto;max-width:100%;padding:12px 14px}
 body.profile-mobile .touch-controls{gap:8px}
 body.profile-mobile .touch-btn{font-size:14px;padding:11px 8px}
+body.profile-mobile .sound-control{flex-direction:column;align-items:stretch}
+body.profile-mobile .sound-control select{width:100%}
 body.profile-mobile .seg-control{flex-direction:column;align-items:stretch}
 body.profile-mobile .seg-control input[type="range"]{width:100%}
 body.profile-mobile .bar-shell{margin:10px auto 10px}
@@ -90,6 +96,8 @@ body.profile-mobile .dash{margin:4px 0 12px}
   .panel{width:auto;max-width:100%;padding:12px 14px}
   .touch-controls{gap:8px}
   .touch-btn{font-size:14px;padding:11px 8px}
+  .sound-control{flex-direction:column;align-items:stretch}
+  .sound-control select{width:100%}
   .seg-control{flex-direction:column;align-items:stretch}
   .seg-control input[type="range"]{width:100%}
   .bar-shell{margin:10px auto 10px}
