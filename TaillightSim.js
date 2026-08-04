@@ -28,12 +28,16 @@
   const bar=$('#bar'),barShell=$('.bar-shell'),modeName=$('#modeName'),panel=$('#panel');
   const testsBox=$('#tests'),testList=$('#testList'),testSummary=$('#testSummary');
   const statusBrake=$('#statusBrake'),statusReverse=$('#statusReverse');
+  const indicatorSoundSelect=$('#indicatorSound');
   const segCountInput=$('#segCount'),segCountDisplay=$('#segCountDisplay');
   const MOBILE_DEFAULT_SEGMENTS=20;
   const PROFILE_CLASSES=['profile-mobile','profile-desktop'];
   const PRESENCE_HEARTBEAT_PATH='/__control/heartbeat';
   const PRESENCE_DISCONNECT_PATH='/__control/disconnect';
   const PRESENCE_STORAGE_KEY='taillightsim-device-id';
+  const INDICATOR_SOUND_STORAGE_KEY='taillightsim-indicator-sound-mode';
+  const INDICATOR_SOUND_DEFAULT='T1/T2';
+  const INDICATOR_SOUND_FILES={T1:'audio/T1.m4a',T2:'audio/T2.m4a'};
   
   // Dynamic segment management
   let segs=[],left=[],right=[],mid=0;
@@ -53,6 +57,8 @@
   let brakeFlashVisible=false;
   let brakeActivatedAt=0;
   let presencePingTimer=null;
+  let suppressIndicatorAudio=false;
+  let indicatorSoundMode=INDICATOR_SOUND_DEFAULT;
   const presenceDeviceId=(()=>{
     try{
       const stored=localStorage.getItem(PRESENCE_STORAGE_KEY);
@@ -160,6 +166,50 @@
       const scale=Math.min(1,availableWidth/barWidth);
       bar.style.transform=`scale(${scale})`;
     });
+  }
+
+  function normalizeIndicatorSoundMode(value){
+    const normalized=String(value||'').trim().toUpperCase().replace(/\s+/g,'');
+    if(normalized==='T1/T2'||normalized==='T1/T1'||normalized==='T2/T2'||normalized==='T2/T1')return normalized;
+    return INDICATOR_SOUND_DEFAULT;
+  }
+
+  function loadIndicatorSoundMode(){
+    try{
+      return normalizeIndicatorSoundMode(localStorage.getItem(INDICATOR_SOUND_STORAGE_KEY));
+    }catch(_err){
+      return INDICATOR_SOUND_DEFAULT;
+    }
+  }
+
+  function saveIndicatorSoundMode(mode){
+    try{
+      localStorage.setItem(INDICATOR_SOUND_STORAGE_KEY,mode);
+    }catch(_err){
+      // Ignore storage failures and keep the in-memory selection.
+    }
+  }
+
+  function getIndicatorSoundPair(mode=indicatorSoundMode){
+    if(mode==='T2/T1')return {on:'T2',off:'T1'};
+    if(mode==='T2/T2')return {on:'T2',off:'T2'};
+    if(mode==='T1/T1')return {on:'T1',off:'T1'};
+    return {on:'T1',off:'T2'};
+  }
+
+  function playIndicatorSound(phase){
+    if(suppressIndicatorAudio)return;
+    const pair=getIndicatorSoundPair();
+    const fileKey=phase==='off'?pair.off:pair.on;
+    const source=INDICATOR_SOUND_FILES[fileKey];
+    if(!source)return;
+    try{
+      const audio=new Audio(source);
+      audio.preload='auto';
+      audio.play().catch(()=>{});
+    }catch(_err){
+      // Audio playback is best-effort.
+    }
   }
   
   // Generate segments dynamically
@@ -356,7 +406,7 @@
   }
   
   async function systemSequence(kind){state.sysBusy=true;clsAll(kind==='goodbye');const half=mid;for(let i=0;i<half;i++){segs[i]?.classList.add('dim');segs[CFG.COUNT-1-i]?.classList.add('dim');await tick()}await sleep(CFG.SEQ_PAUSE);if(kind==='welcome'){for(let i=0;i<half;i++){segs[mid-1-i]?.classList.replace('dim','on');segs[mid+i]?.classList.replace('dim','on');await tick()}}else{for(let i=0;i<half;i++){segs[mid-1-i]?.classList.replace('on','dim');segs[mid+i]?.classList.replace('on','dim');await tick()}await sleep(CFG.SEQ_PAUSE);for(let i=0;i<half;i++){segs[i]?.classList.remove('dim');segs[CFG.COUNT-1-i]?.classList.remove('dim');await tick()}}state.sysBusy=false;updateReverseLights()}
-  async function hazardFlash(cycles,keepBase,hapticOnFlash=false){state.sysBusy=true;const all=[...left,...right];const sigButtons=getSignalButtons('hazard');if(!keepBase)all.forEach(s=>s.classList.remove('on'));for(let c=0;c<cycles;c++){if(hapticOnFlash)triggerHaptic(CFG.HAPTIC_FLASH_MS);all.forEach(s=>s.classList.add('ind'));const itok=state.iconToken;iconsApply(sigButtons,'on',true,itok);await sleep(CFG.HAZ_ON);all.forEach(s=>s.classList.remove('ind'));iconsApply(sigButtons,'on',false,itok);await sleep(CFG.HAZ_OFF)}state.sysBusy=false;updateReverseLights()}
+  async function hazardFlash(cycles,keepBase,hapticOnFlash=false){state.sysBusy=true;const all=[...left,...right];const sigButtons=getSignalButtons('hazard');if(!keepBase)all.forEach(s=>s.classList.remove('on'));for(let c=0;c<cycles;c++){if(hapticOnFlash)triggerHaptic(CFG.HAPTIC_FLASH_MS);playIndicatorSound('on');all.forEach(s=>s.classList.add('ind'));const itok=state.iconToken;iconsApply(sigButtons,'on',true,itok);await sleep(CFG.HAZ_ON);playIndicatorSound('off');all.forEach(s=>s.classList.remove('ind'));iconsApply(sigButtons,'on',false,itok);await sleep(CFG.HAZ_OFF)}state.sysBusy=false;updateReverseLights()}
   function restoreRedDelayed(group){if(!state.on)return;if(restoreTimeout)clearTimeout(restoreTimeout);restoreTimeout=setTimeout(()=>{restoreTimeout=null;group.forEach(s=>{s.classList.add('on');s.style.transitionDuration='.4s'});setTimeout(()=>{group.forEach(s=>s.style.transitionDuration='');updateReverseLights()},420)},CFG.RETURN_TO_RED_DELAY)}
   function normalizeArr(v){return Array.isArray(v)?v:[]}
 
@@ -371,6 +421,7 @@
         await sleep(CFG.AUDI_HOLD_OFF);
         if(!active(token,dir))break;
         triggerSignalOnHaptic();
+        playIndicatorSound('on');
         iconsApply(sigIcos,'on',true,itok);
         for(let i=0;i<primary.length;i++){
           if(!active(token,dir))break;
@@ -381,6 +432,7 @@
         if(!active(token,dir))break;
         await sleep(CFG.AUDI_HOLD_ON);
         if(!active(token,dir))break;
+        playIndicatorSound('off');
         all.forEach(s=>s.classList.replace('ind','ind-dim'));
         iconsApply(sigIcos,'on',false,itok);
         await sleep(CFG.AUDI_FADE);
@@ -406,10 +458,12 @@
         await sleep(CFG.BMW_HOLD_OFF);
         if(!active(token,dir))break;
         triggerSignalOnHaptic();
+        playIndicatorSound('on');
         all.forEach(s=>{s.style.transitionDuration='.35s';s.classList.add('ind')});
         iconsApply(sigIcos,'on',true,itok);
         await sleep(CFG.BMW_FADE_IN);
         if(!active(token,dir))break;
+        playIndicatorSound('off');
         all.forEach(s=>{s.style.transitionDuration='0s';s.classList.remove('ind');s.offsetHeight;s.style.transitionDuration=''});
         iconsApply(sigIcos,'on',false,itok)
       }
@@ -432,6 +486,7 @@
         await sleep(CFG.MAZDA_HOLD_OFF);
         if(!active(token,dir))break;
         triggerSignalOnHaptic();
+        playIndicatorSound('on');
         all.forEach(s=>{s.style.transitionDuration='0s';s.classList.add('ind');s.offsetHeight;s.style.transitionDuration='.3s'});
         iconsApply(sigIcos,'on',true,itok);
         await sleep(CFG.MAZDA_HOLD_ON);
@@ -461,11 +516,13 @@
     all.forEach(s => s.style.transition = 'none');
     (async()=>{
         while(active(token,dir)){
+        playIndicatorSound('off');
             all.forEach(s => s.classList.remove(activeClass));
             iconsApply(sigIcos,'on',false,itok);
             await sleep(CFG.BLINK_OFF);
             if(!active(token,dir)) break;
             triggerSignalOnHaptic();
+        playIndicatorSound('on');
             all.forEach(s => s.classList.add(activeClass));
             iconsApply(sigIcos,'on',true,itok);
             await sleep(CFG.BLINK_ON);
@@ -493,6 +550,7 @@
     (async()=>{
       while(active(token,dir)){
         triggerSignalOnHaptic();
+        playIndicatorSound('on');
         all.forEach(s=>s.classList.add('usdm'));
         iconsApply(sigIcos,'on',true,itok);
         await sleep(CFG.USDM_HOLD_ON_MS);
@@ -526,6 +584,7 @@
     const itok=state.iconToken;
     (async()=>{
         while(active(token,dir)){
+        playIndicatorSound('off');
             all.forEach(s => {
                 s.style.transitionDuration = '0.35s';
                 s.style.transitionTimingFunction = 'ease-in';
@@ -535,6 +594,7 @@
             await sleep(CFG.BLINK_OFF);
             if(!active(token,dir)) break;
             triggerSignalOnHaptic();
+        playIndicatorSound('on');
             all.forEach(s => {
                 s.style.transitionDuration = '0.12s';
                 s.style.transitionTimingFunction = 'ease-out';
@@ -554,7 +614,7 @@
   function activate(dir){
       if(state.sysBusy)return;
       if(state.signal===dir){
-          state.signal='none';state.animToken++;state.iconToken++;if(restoreTimeout){clearTimeout(restoreTimeout);restoreTimeout=null}clearSigIcons();return
+        state.signal='none';state.animToken++;state.iconToken++;if(restoreTimeout){clearTimeout(restoreTimeout);restoreTimeout=null}clearSigIcons();return
       }
       clsAll(state.on);
       state.signal=dir;
@@ -581,6 +641,7 @@
     testsBox.style.display='block';
     selfTestsRunning=true;
     try{
+      suppressIndicatorAudio=true;
       await runSelfTests();
       const failed=testsBox.querySelectorAll('.fail').length;
       if(failed===0){
@@ -597,6 +658,7 @@
         location.reload();
       }
     }finally{
+      suppressIndicatorAudio=false;
       selfTestsRunning=false;
     }
   }
@@ -751,22 +813,39 @@
   }
   function dispatchKey(type,key){document.dispatchEvent(new KeyboardEvent(type,{key,bubbles:true}))}
   const testResults=[];
-  async function runSelfTests(){testResults.length=0;testList.textContent='';const t0=performance.now();
-    try{activate('left');await sleep(220);activate('left');addResult('left toggle',true)}catch(e){addResult('left toggle',false,e)}
-    try{activate('right');await sleep(220);activate('right');addResult('right toggle',true)}catch(e){addResult('right toggle',false,e)}
-    try{activate('hazard');await sleep(260);activate('hazard');addResult('hazard toggle resets icons',iconsAreClear(),'icons not cleared')}catch(e){addResult('hazard toggle resets icons',false,e)}
-    try{activate('left');await sleep(120);activate('left');addResult('left cancel clears all classes',segClassCount('ind')===0&&segClassCount('ind-dim')===0&&iconsAreClear(),'classes or icons linger')}catch(e){addResult('left cancel clears all classes',false,e)}
-    try{activate('right');await sleep(120);activate('hazard');await sleep(220);activate('hazard');addResult('right→hazard→off leaves icons clear',iconsAreClear(),'icons linger after hazard off')}catch(e){addResult('right→hazard→off leaves icons clear',false,e)}
-    try{const prevOn=state.on,prevMode=state.modeIdx;state.on=true;state.modeIdx=3;setModeLabel();clsAll(true);activate('hazard');await sleep(140);activate('left');await sleep(CFG.RETURN_TO_RED_DELAY+140);const redLeak=groupHasClass(left,'on');stopSignalIfActive();state.modeIdx=prevMode;setModeLabel();state.on=prevOn;clsAll(state.on);addResult('hazard→left keeps active side non-red',!redLeak,'running red restored on active indicator side')}catch(e){stopSignalIfActive();addResult('hazard→left keeps active side non-red',false,e)}
-    try{const prevOn=state.on,prevMode=state.modeIdx;state.on=true;state.modeIdx=3;setModeLabel();clsAll(true);activate('left');await sleep(140);activate('hazard');await sleep(CFG.RETURN_TO_RED_DELAY+140);const redLeak=groupHasClass(left,'on')||groupHasClass(right,'on');stopSignalIfActive();state.modeIdx=prevMode;setModeLabel();state.on=prevOn;clsAll(state.on);addResult('left→hazard keeps both sides non-red',!redLeak,'running red appeared during hazard')}catch(e){stopSignalIfActive();addResult('left→hazard keeps both sides non-red',false,e)}
-    try{clsAll(false);deactivateBrake();activateBrake();const activeWhileHeld=state.brakeActive&&segClassCount('brake')>0&&statusBrake.classList.contains('brake')&&statusBrake.classList.contains('active');deactivateBrake();await sleep(60);const clearOnRelease=!state.brakeActive&&segClassCount('brake')===0&&!statusBrake.classList.contains('brake')&&!statusBrake.classList.contains('active');addResult('brake hold press/release',activeWhileHeld&&clearOnRelease,'held='+activeWhileHeld+', release='+clearOnRelease)}catch(e){addResult('brake hold press/release',false,e)}
-    try{if(state.reverseActive)toggleReverse();if(qHoldTimer){clearTimeout(qHoldTimer);qHoldTimer=null}down.delete('q');const shortHold=Math.max(60,CFG.REVERSE_HOLD_MS-90);dispatchKey('keydown','q');await sleep(shortHold);dispatchKey('keyup','q');await sleep(80);const shortDoesNotToggle=!state.reverseActive;dispatchKey('keydown','q');await sleep(CFG.REVERSE_HOLD_MS+120);const longDoesToggle=state.reverseActive;dispatchKey('keyup','q');await sleep(60);const reverseStatusMatches=statusReverse.classList.contains('reverse')===state.reverseActive;if(state.reverseActive)toggleReverse();addResult('reverse hold timing threshold',shortDoesNotToggle&&longDoesToggle&&reverseStatusMatches,'short='+shortDoesNotToggle+', long='+longDoesToggle+', status='+reverseStatusMatches)}catch(e){if(state.reverseActive)toggleReverse();addResult('reverse hold timing threshold',false,e)}
-    try{const before=state.modeIdx;activate('left');await sleep(100);changeMode();await sleep(200);activate('left');await sleep(150);activate('left');addResult('mode change during signal is stable',segClassCount('ind')===0&&segClassCount('ind-dim')===0&&iconsAreClear()&&state.modeIdx!==before,'residue after mode change')}catch(e){addResult('mode change during signal is stable',false,e)}
-    try{clsAll(false);addResult('locked default has no lit segments',segClassCount('on')===0,'some segments lit on load')}catch(e){addResult('locked default has no lit segments',false,e)}
-    try{const parsedMobile=getProfileOverride('?profile=mobile');const parsedDesktop=getProfileOverride('?profile=desktop');const forcedMobile=getInitialSegmentCount({profileOverride:parsedMobile,sliderValue:60,userAgent:'Mozilla/5.0',narrowViewport:false,coarsePointer:false});const forcedDesktop=getInitialSegmentCount({profileOverride:parsedDesktop,sliderValue:60,userAgent:'Mozilla/5.0',narrowViewport:true,coarsePointer:true});addResult('profile override defaults',forcedMobile===MOBILE_DEFAULT_SEGMENTS&&forcedDesktop===60,'mobile='+forcedMobile+', desktop='+forcedDesktop)}catch(e){addResult('profile override defaults',false,e)}
-    const total=testResults.length,passed=testResults.filter(t=>t.ok).length;setSummary(total,passed,performance.now()-t0)}
+  async function runSelfTests(){
+    testResults.length=0;
+    testList.textContent='';
+    const t0=performance.now();
+    try{
+      activate('left');await sleep(220);activate('left');addResult('left toggle',true)
+      activate('right');await sleep(220);activate('right');addResult('right toggle',true)
+      activate('hazard');await sleep(260);activate('hazard');addResult('hazard toggle resets icons',iconsAreClear(),'icons not cleared')
+      activate('left');await sleep(120);activate('left');addResult('left cancel clears all classes',segClassCount('ind')===0&&segClassCount('ind-dim')===0&&iconsAreClear(),'classes or icons linger')
+      activate('right');await sleep(120);activate('hazard');await sleep(220);activate('hazard');addResult('right→hazard→off leaves icons clear',iconsAreClear(),'icons linger after hazard off')
+      try{const prevOn=state.on,prevMode=state.modeIdx;state.on=true;state.modeIdx=3;setModeLabel();clsAll(true);activate('hazard');await sleep(140);activate('left');await sleep(CFG.RETURN_TO_RED_DELAY+140);const redLeak=groupHasClass(left,'on');stopSignalIfActive();state.modeIdx=prevMode;setModeLabel();state.on=prevOn;clsAll(state.on);addResult('hazard→left keeps active side non-red',!redLeak,'running red restored on active indicator side')}catch(e){stopSignalIfActive();addResult('hazard→left keeps active side non-red',false,e)}
+      try{const prevOn=state.on,prevMode=state.modeIdx;state.on=true;state.modeIdx=3;setModeLabel();clsAll(true);activate('left');await sleep(140);activate('hazard');await sleep(CFG.RETURN_TO_RED_DELAY+140);const redLeak=groupHasClass(left,'on')||groupHasClass(right,'on');stopSignalIfActive();state.modeIdx=prevMode;setModeLabel();state.on=prevOn;clsAll(state.on);addResult('left→hazard keeps both sides non-red',!redLeak,'running red appeared during hazard')}catch(e){stopSignalIfActive();addResult('left→hazard keeps both sides non-red',false,e)}
+      try{clsAll(false);deactivateBrake();activateBrake();const activeWhileHeld=state.brakeActive&&segClassCount('brake')>0&&statusBrake.classList.contains('brake')&&statusBrake.classList.contains('active');deactivateBrake();await sleep(60);const clearOnRelease=!state.brakeActive&&segClassCount('brake')===0&&!statusBrake.classList.contains('brake')&&!statusBrake.classList.contains('active');addResult('brake hold press/release',activeWhileHeld&&clearOnRelease,'held='+activeWhileHeld+', release='+clearOnRelease)}catch(e){addResult('brake hold press/release',false,e)}
+      try{if(state.reverseActive)toggleReverse();if(qHoldTimer){clearTimeout(qHoldTimer);qHoldTimer=null}down.delete('q');const shortHold=Math.max(60,CFG.REVERSE_HOLD_MS-90);dispatchKey('keydown','q');await sleep(shortHold);dispatchKey('keyup','q');await sleep(80);const shortDoesNotToggle=!state.reverseActive;dispatchKey('keydown','q');await sleep(CFG.REVERSE_HOLD_MS+120);const longDoesToggle=state.reverseActive;dispatchKey('keyup','q');await sleep(60);const reverseStatusMatches=statusReverse.classList.contains('reverse')===state.reverseActive;if(state.reverseActive)toggleReverse();addResult('reverse hold timing threshold',shortDoesNotToggle&&longDoesToggle&&reverseStatusMatches,'short='+shortDoesNotToggle+', long='+longDoesToggle+', status='+reverseStatusMatches)}catch(e){if(state.reverseActive)toggleReverse();addResult('reverse hold timing threshold',false,e)}
+      try{const before=state.modeIdx;activate('left');await sleep(100);changeMode();await sleep(200);activate('left');await sleep(150);activate('left');addResult('mode change during signal is stable',segClassCount('ind')===0&&segClassCount('ind-dim')===0&&iconsAreClear()&&state.modeIdx!==before,'residue after mode change')}catch(e){addResult('mode change during signal is stable',false,e)}
+      try{clsAll(false);addResult('locked default has no lit segments',segClassCount('on')===0,'some segments lit on load')}catch(e){addResult('locked default has no lit segments',false,e)}
+      try{const parsedMobile=getProfileOverride('?profile=mobile');const parsedDesktop=getProfileOverride('?profile=desktop');const forcedMobile=getInitialSegmentCount({profileOverride:parsedMobile,sliderValue:60,userAgent:'Mozilla/5.0',narrowViewport:false,coarsePointer:false});const forcedDesktop=getInitialSegmentCount({profileOverride:parsedDesktop,sliderValue:60,userAgent:'Mozilla/5.0',narrowViewport:true,coarsePointer:true});addResult('profile override defaults',forcedMobile===MOBILE_DEFAULT_SEGMENTS&&forcedDesktop===60,'mobile='+forcedMobile+', desktop='+forcedDesktop)}catch(e){addResult('profile override defaults',false,e)}
+    }finally{
+      const total=testResults.length,passed=testResults.filter(t=>t.ok).length;
+      setSummary(total,passed,performance.now()-t0);
+    }
+  }
   
   setModeLabel();
+  indicatorSoundMode=loadIndicatorSoundMode();
+  if(indicatorSoundSelect){
+    indicatorSoundSelect.value=indicatorSoundMode;
+    indicatorSoundSelect.addEventListener('change',e=>{
+      indicatorSoundMode=normalizeIndicatorSoundMode(e.target.value);
+      indicatorSoundSelect.value=indicatorSoundMode;
+      saveIndicatorSoundMode(indicatorSoundMode);
+    });
+  }
   setupTouchControls();
   startPresenceReporting();
 })();
